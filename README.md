@@ -110,7 +110,7 @@ Home Assistant **user id** of whoever operated it:
 ```json
 "light.living_room_lamp": {
   "last_used": "2026-07-30T23:41:12+02:00",
-  "buckets": { "69d919fb…": { "2026-07-30": 7, "2026-07-29": 3 } }
+  "buckets": { "0123456789ab…": { "2026-07-30": 7, "2026-07-29": 3 } }
 }
 ```
 
