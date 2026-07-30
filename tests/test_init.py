@@ -6,7 +6,7 @@ from homeassistant.core import Context
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pareto.const import DOMAIN
-from custom_components.pareto.store import ParetoStoreError
+from custom_components.pareto.store import ParetoStore, ParetoStoreError
 
 USER = "69d919fb68524e7086650439297dd452"
 
@@ -103,3 +103,48 @@ async def test_store_error_aborts_setup_instead_of_being_swallowed(hass):
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert entry.reason is not None and "newer version" in entry.reason
     assert entry.entry_id not in hass.data.get(DOMAIN, {})
+
+
+async def test_failed_platform_setup_does_not_leak_subsystems(hass):
+    """If forwarding to the sensor platform fails, setup must leave no live
+    timer or event listener behind.
+
+    HA never calls async_unload_entry for an entry that never reached
+    LOADED (config_entries.py's __async_setup_with_context only stores
+    setup-failure state; ConfigEntry.async_unload short-circuits straight to
+    NOT_LOADED). So anything started before the failure has to unwind itself,
+    or it runs -- and keeps mutating the on-disk store -- forever.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    created_stores: list[ParetoStore] = []
+
+    def _spy_store(hass_):
+        store = ParetoStore(hass_)
+        created_stores.append(store)
+        return store
+
+    with (
+        patch("custom_components.pareto.ParetoStore", side_effect=_spy_store),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            side_effect=RuntimeError("platform boom"),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
+    assert len(created_stores) == 1
+
+    # The orphaned listener would still record this; prove it does not.
+    hass.states.async_set("light.a", "off")
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": {"entity_id": "light.a"}},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+    assert created_stores[0].aggregated() == []

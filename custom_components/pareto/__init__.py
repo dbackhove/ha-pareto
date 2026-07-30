@@ -41,14 +41,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = ParetoCoordinator(hass, entry, store)
     tracker = UsageTracker(hass, store, coordinator.async_request_refresh)
 
-    await coordinator.async_start()
-    tracker.async_start()
+    try:
+        await coordinator.async_start()
+        tracker.async_start()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = ParetoRuntime(
-        store=store, coordinator=coordinator, tracker=tracker
-    )
+        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = ParetoRuntime(
+            store=store, coordinator=coordinator, tracker=tracker
+        )
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        # HA never calls async_unload_entry for an entry that did not reach
+        # LOADED, so a failure anywhere in this block must unwind itself:
+        # otherwise the daily timer and the service-call listener started
+        # above would keep running and mutating the on-disk store forever,
+        # with no way to stop them short of restarting Home Assistant. Both
+        # stop calls are safe even if the matching start above never ran.
+        hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+        tracker.async_stop()
+        await coordinator.async_stop()
+        raise
+
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
 
