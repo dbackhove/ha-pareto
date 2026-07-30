@@ -1,0 +1,134 @@
+"""Persistence for Pareto usage counters."""
+
+from __future__ import annotations
+
+import logging
+from datetime import date, datetime, timedelta
+from typing import Any
+
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.storage import Store
+
+from .const import SAVE_DELAY, STORAGE_KEY, STORAGE_VERSION
+from .ranking import EntityUsage
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class ParetoStoreError(Exception):
+    """Raised when stored data exists but cannot be used safely."""
+
+
+class ParetoStore:
+    """Per-entity, per-user, per-day usage counters backed by HA's Store.
+
+    Layout keeps the entity on the outside and the user on the inside. Phase 1
+    aggregates across users; a future per-user card reads one level deeper
+    without a data migration.
+    """
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._data: dict[str, dict[str, Any]] = {}
+
+    async def async_load(self) -> None:
+        """Load from disk.
+
+        Unreadable data starts empty rather than blocking setup. Data written
+        by a *newer* Pareto is different: starting empty would look harmless
+        until the first delayed save destroyed it, so that case raises.
+        """
+        try:
+            raw = await self._store.async_load()
+        except NotImplementedError as err:
+            raise ParetoStoreError(
+                "Pareto storage was written by a newer version and cannot be read"
+            ) from err
+        except Exception:  # noqa: BLE001 - never let bad data block setup
+            _LOGGER.warning("Could not read Pareto storage, starting with empty data", exc_info=True)
+            self._data = {}
+            return
+
+        if not isinstance(raw, dict):
+            self._data = {}
+            return
+        entries = raw.get("data")
+        self._data = entries if isinstance(entries, dict) else {}
+
+    @callback
+    def raw(self) -> dict[str, dict[str, Any]]:
+        """Return the underlying structure. For tests and the importer."""
+        return self._data
+
+    def _entry(self, entity_id: str) -> dict[str, Any]:
+        return self._data.setdefault(entity_id, {"last_used": None, "buckets": {}})
+
+    @callback
+    def record(self, entity_id: str, user_id: str, when: datetime) -> None:
+        """Count one live usage. ``when`` must already be in local time."""
+        entry = self._entry(entity_id)
+        day = when.date().isoformat()
+        buckets = entry["buckets"].setdefault(user_id, {})
+        buckets[day] = buckets.get(day, 0) + 1
+
+        stamp = when.isoformat()
+        if entry["last_used"] is None or stamp > entry["last_used"]:
+            entry["last_used"] = stamp
+        self.schedule_save()
+
+    @callback
+    def record_import(self, entity_id: str, user_id: str, day: str, when_iso: str) -> bool:
+        """Write one historical usage, but only into a bucket that does not exist.
+
+        This single rule makes the import idempotent, stops it from ever
+        clobbering live data, and lets an aborted run resume by simply being
+        run again. Returns whether anything was written.
+        """
+        entry = self._entry(entity_id)
+        buckets = entry["buckets"].setdefault(user_id, {})
+        if day in buckets:
+            return False
+
+        buckets[day] = 1
+        if entry["last_used"] is None or when_iso > entry["last_used"]:
+            entry["last_used"] = when_iso
+        self.schedule_save()
+        return True
+
+    @callback
+    def prune(self, today: date, keep_days: int) -> None:
+        """Drop buckets older than ``keep_days``, and entities left with none."""
+        cutoff = (today - timedelta(days=keep_days)).isoformat()
+
+        for entity_id in list(self._data):
+            entry = self._data[entity_id]
+            for user_id in list(entry["buckets"]):
+                kept = {d: c for d, c in entry["buckets"][user_id].items() if d >= cutoff}
+                if kept:
+                    entry["buckets"][user_id] = kept
+                else:
+                    del entry["buckets"][user_id]
+            if not entry["buckets"]:
+                del self._data[entity_id]
+
+        self.schedule_save()
+
+    @callback
+    def aggregated(self) -> list[EntityUsage]:
+        """Collapse per-user buckets into one set of counts per entity."""
+        result: list[EntityUsage] = []
+        for entity_id, entry in self._data.items():
+            counts: dict[str, int] = {}
+            for user_buckets in entry["buckets"].values():
+                for day, count in user_buckets.items():
+                    counts[day] = counts.get(day, 0) + count
+            result.append(
+                EntityUsage(entity_id=entity_id, counts=counts, last_used=entry["last_used"])
+            )
+        return result
+
+    @callback
+    def schedule_save(self) -> None:
+        """Queue a delayed write. Bursts collapse into a single disk write."""
+        self._store.async_delay_save(lambda: {"data": self._data}, SAVE_DELAY)
