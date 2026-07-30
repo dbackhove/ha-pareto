@@ -1,9 +1,14 @@
 {
   "domain": "pareto",
   "name": "Pareto",
-  "codeowners": ["@dbackhove"],
+  "after_dependencies": [
+    "recorder",
+    "logbook"
+  ],
+  "codeowners": [
+    "@dbackhove"
+  ],
   "config_flow": true,
-  "after_dependencies": ["recorder", "logbook"],
   "documentation": "https://github.com/dbackhove/ha-pareto",
   "integration_type": "service",
   "iot_class": "calculated",

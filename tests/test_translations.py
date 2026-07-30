@@ -34,3 +34,14 @@ def test_manifest_points_at_the_real_repository():
     assert manifest["codeowners"] == ["@dbackhove"]
     assert manifest["documentation"] == "https://github.com/dbackhove/ha-pareto"
     assert manifest["issue_tracker"] == "https://github.com/dbackhove/ha-pareto/issues"
+
+
+def test_manifest_keys_are_ordered_the_way_hassfest_demands():
+    """hassfest requires: domain, name, then everything else alphabetically.
+
+    Ordering is invisible to Python but a hard error in Home Assistant's own
+    validation, so without this the only feedback is a red CI run after a push.
+    """
+    order = list(load("manifest.json"))
+    assert order[:2] == ["domain", "name"]
+    assert order[2:] == sorted(order[2:])
