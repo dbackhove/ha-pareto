@@ -42,6 +42,33 @@ async def test_direct_user_action_is_counted(wired):
     assert counted(store) == ["light.a"]
 
 
+async def test_an_entity_that_does_not_exist_is_not_recorded(wired):
+    """Storage must not accept arbitrary ids from the event bus.
+
+    Nothing validates the entity ids on an EVENT_CALL_SERVICE, and prune only
+    drops buckets by age -- so without this filter a misbehaving add-on or
+    integration firing invented ids would grow the store for up to the full
+    retention window.
+    """
+    hass, store, _ = wired
+    await fire(
+        hass, "light", "turn_on", {"entity_id": "light.never_existed"}, Context(user_id=USER)
+    )
+    assert counted(store) == []
+
+
+async def test_a_mixed_call_records_only_the_entities_that_exist(wired):
+    hass, store, _ = wired
+    await fire(
+        hass,
+        "light",
+        "turn_on",
+        {"entity_id": ["light.a", "light.never_existed"]},
+        Context(user_id=USER),
+    )
+    assert counted(store) == ["light.a"]
+
+
 async def test_automation_without_user_is_not_counted(wired):
     hass, store, _ = wired
     await fire(hass, "light", "turn_on", {"entity_id": "light.a"}, Context())

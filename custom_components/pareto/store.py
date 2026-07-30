@@ -81,8 +81,13 @@ class ParetoStore:
         self._data = _normalize_entries(entries) if isinstance(entries, dict) else {}
 
     @callback
+    def is_empty(self) -> bool:
+        """Whether nothing has ever been recorded or imported."""
+        return not self._data
+
+    @callback
     def raw(self) -> dict[str, dict[str, Any]]:
-        """Return the underlying structure. For tests and the importer."""
+        """Return the underlying structure, by reference. For tests only."""
         return self._data
 
     def _entry(self, entity_id: str) -> dict[str, Any]:
