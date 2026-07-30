@@ -68,6 +68,11 @@ class ParetoCard extends LitElement {
     // The mode may have changed, and the old tiles belong to the other list.
     this._tiles.clear();
     this._syncTiles();
+    // Home Assistant calls setConfig before assigning hass and before adding
+    // the card to the document, so in practice the load below is the one that
+    // never runs. It is here so the card does not depend on that order: every
+    // other entry point bails out while _config is still unset.
+    void this._load(true);
   }
 
   set hass(hass: HomeAssistant | undefined) {
