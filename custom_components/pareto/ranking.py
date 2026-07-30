@@ -110,10 +110,11 @@ def build_ranked_list(
 
     ``mode`` is "top" (sorted by decayed score) or "recent" (sorted by
     ``last_used``). Pinned entities are prepended in their configured order and
-    count against ``limit``; an explicit pin beats the exclusion filters,
-    because pinning something and excluding it is a contradiction the user
-    resolved by pinning it. Entities that no longer exist are removed before
-    truncation, so a full list stays full.
+    count against ``limit``; an explicit pin bypasses all filters
+    (include_domains, exclude_domains, exclude_entities), because pinning
+    something and filtering it out is a contradiction the user resolved by
+    pinning it. Entities that no longer exist are removed before truncation,
+    so a full list stays full.
     """
     by_id = {u.entity_id: u for u in usages}
 

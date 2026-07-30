@@ -118,6 +118,13 @@ def test_pin_overrides_exclusion():
     assert [r.entity_id for r in result] == ["light.a"]
 
 
+def test_pin_overrides_the_domain_whitelist():
+    """A pin beats include_domains too, not just the exclusions."""
+    result = build([usage("light.a", 5)], include=frozenset({"switch"}), pinned=("light.a",))
+    assert [r.entity_id for r in result] == ["light.a"]
+    assert result[0].pinned is True
+
+
 def test_nonexistent_entities_are_dropped():
     result = build(
         [usage("light.gone", 9), usage("light.here", 1)],
