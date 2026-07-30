@@ -65,10 +65,33 @@ async def test_multiple_entity_ids_each_count(wired):
     assert sorted(counted(store)) == ["light.a", "light.b"]
 
 
+async def test_callback_fires_once_per_call_not_once_per_entity(wired):
+    hass, store, on_recorded = wired
+    await fire(
+        hass, "light", "turn_on", {"entity_id": ["light.a", "light.b"]}, Context(user_id=USER)
+    )
+    assert on_recorded.call_count == 1
+
+
 async def test_call_without_target_is_ignored(wired):
     hass, store, _ = wired
     await fire(hass, "notify", "mobile_app_x", {"message": "hi"}, Context(user_id=USER))
     assert counted(store) == []
+
+
+async def test_listener_survives_a_malformed_event(wired):
+    """One bad event (here: a non-dict service_data) must not kill the listener;
+    the next, well-formed event must still be recorded normally."""
+    hass, store, _ = wired
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": "not-a-dict"},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+
+    await fire(hass, "light", "turn_on", {"entity_id": "light.a"}, Context(user_id=USER))
+    assert counted(store) == ["light.a"]
 
 
 async def test_blocked_service_is_not_counted(wired):

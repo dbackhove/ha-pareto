@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -36,9 +35,13 @@ async def async_resolve_targets(
     """Resolve a service call's targets to concrete entity ids.
 
     The plain ``entity_id`` form covers nearly every call from the UI and is
-    handled directly. Area, device and label targets go through HA's helper,
-    whose import path has moved between releases -- so a failure there degrades
-    to "no targets" rather than killing the listener.
+    handled directly. Area, device, label and floor targets go through HA's
+    target-resolution helper, wrapped in try/except so a future API change
+    degrades to "no targets" rather than killing the listener.
+
+    ``context`` is accepted to keep this function's interface stable even
+    though the current resolution path (``homeassistant.helpers.target``)
+    does not need it -- it operates purely on the raw target ids in ``data``.
     """
     entity_id = data.get("entity_id")
     if isinstance(entity_id, str) and entity_id != "all":
@@ -50,16 +53,15 @@ async def async_resolve_targets(
         return set()
 
     try:
-        from homeassistant.core import ServiceCall
-        from homeassistant.helpers.service import async_extract_referenced_entity_ids
+        from homeassistant.helpers.target import (
+            TargetSelection,
+            async_extract_referenced_entity_ids,
+        )
 
-        call = ServiceCall(hass, domain, service, dict(data), context)
-        # In some HA releases this helper is a coroutine function; in others
-        # (verified: 2026.2) it is a plain, synchronous function despite the
-        # "async_" prefix (a naming convention meaning "callback-safe", not
-        # "returns a coroutine"). Support both without depending on a version.
-        result = async_extract_referenced_entity_ids(hass, call)
-        selected = await result if inspect.isawaitable(result) else result
+        # Confirmed synchronous via inspect.iscoroutinefunction against the
+        # pinned test HA (2026.2.3); this module already existed there, well
+        # before the integration's actual minimum supported HA version.
+        selected = async_extract_referenced_entity_ids(hass, TargetSelection(data))
         return set(selected.referenced) | set(selected.indirectly_referenced)
     except Exception:  # noqa: BLE001 - one odd call must not stop tracking
         _LOGGER.debug("Could not resolve targets for %s.%s", domain, service, exc_info=True)
