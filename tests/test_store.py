@@ -156,6 +156,22 @@ async def test_flush_persists_a_pending_delayed_save(hass):
     assert fresh.aggregated()[0].counts == {"2026-07-30": 1}
 
 
+async def test_corrupt_entry_missing_buckets_does_not_crash(hass):
+    """Spec promises 'corrupt -> start empty, never crash'. A stored entry
+    that is valid JSON but missing 'buckets' used to raise KeyError out of
+    aggregated(), which runs inside async_start() and fails setup."""
+    s = ParetoStore(hass)
+    with patch.object(
+        s._store,
+        "async_load",
+        return_value={"data": {"light.a": {"last_used": "2026-07-25T12:00:00+02:00"}}},
+    ):
+        await s.async_load()
+    usages = s.aggregated()
+    assert usages[0].entity_id == "light.a"
+    assert usages[0].counts == {}
+
+
 async def test_last_used_survives_a_dst_fall_back(store):
     """02:30+02:00 and 02:30+01:00 are the same wall clock an hour apart.
     String comparison ranks them backwards; datetime comparison does not."""

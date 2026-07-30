@@ -20,6 +20,27 @@ class ParetoStoreError(Exception):
     """Raised when stored data exists but cannot be used safely."""
 
 
+def _normalize_entries(entries: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Coerce loaded data into the shape every accessor relies on.
+
+    A hand-edited or partially-written storage file can be valid JSON while
+    missing ``buckets`` or ``last_used`` on an entry. Normalising once here,
+    right after load, means ``aggregated()`` and ``prune()`` never have to
+    guard against it themselves -- a corrupt entry starts empty rather than
+    raising ``KeyError`` out of ``async_start()`` and failing setup.
+    """
+    normalized: dict[str, dict[str, Any]] = {}
+    for entity_id, entry in entries.items():
+        if not isinstance(entry, dict):
+            continue
+        buckets = entry.get("buckets")
+        normalized[entity_id] = {
+            "last_used": entry.get("last_used"),
+            "buckets": buckets if isinstance(buckets, dict) else {},
+        }
+    return normalized
+
+
 class ParetoStore:
     """Per-entity, per-user, per-day usage counters backed by HA's Store.
 
@@ -57,7 +78,7 @@ class ParetoStore:
             self._data = {}
             return
         entries = raw.get("data")
-        self._data = entries if isinstance(entries, dict) else {}
+        self._data = _normalize_entries(entries) if isinstance(entries, dict) else {}
 
     @callback
     def raw(self) -> dict[str, dict[str, Any]]:
