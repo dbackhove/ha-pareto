@@ -70,10 +70,49 @@ sensor — `score`.
 Home Assistant has no native way to build a list of cards from data. `tile` and
 `entities` take entity ids you wrote down in advance, and `entity-filter` only
 narrows a list that already exists. Turning a ranking into actual tiles
-therefore needs a custom card, always. A Pareto card is planned; until it
-exists, one of the two below will do.
+therefore needs a custom card, always. Pareto brings its own.
 
-### Without installing anything
+### The Pareto card
+
+The card ships with the integration and registers itself — there is no second
+HACS entry to install and no Lovelace resource to add by hand. Add it to a
+dashboard:
+
+```yaml
+type: custom:pareto-card
+mode: top          # top | recent — default: top
+title: Most used   # optional
+columns: 2         # optional; responsive when left out
+```
+
+Each entry is rendered as Home Assistant's own tile card, so every domain
+behaves exactly as it does elsewhere on your dashboard, dialogs included.
+
+Two things it does that the sensors cannot:
+
+**The list is yours.** The sensors count the household; the card ranks what
+*you* operated, per signed-in user. Until you have enough history of your own,
+it fills the remaining places from the household ranking, so it is useful from
+the first minute and personalises itself as it goes.
+
+**You can tidy it.** The pencil in the header turns the tiles into controls for
+the list itself: ✕ hides an entry, the pin keeps one at the top, and everything
+you have hidden is listed below with a way to bring it back. This is per user,
+takes effect immediately, and needs no admin rights — unlike the blocklists
+under Options, which are house-wide settings. You will want it: a ranking built
+from service calls picks up entities nobody wants a tile for, such as a
+`binary_sensor` that changed because of your click, or the `automation` that ran
+because of it.
+
+The order is deliberately frozen while you are looking at the card. It is
+decided when you open the view and stays put until you come back, so the tile
+you are reaching for does not move out from under your finger. States stay live
+throughout — it is the ordering that is held still, not the contents.
+
+### Alternatives without the card
+
+Both of these predate the card and still work. They are worth knowing if you
+want the ranking somewhere the card does not fit.
 
 A Markdown card renders the ranking as text:
 
@@ -86,11 +125,9 @@ content: |
   {% endfor %}
 ```
 
-### As real tiles, with auto-entities
-
-[auto-entities](https://github.com/thomasloven/lovelace-auto-entities) — HACS,
-category Lovelace — can build card configurations from a template, which is
-enough to get one working tile per ranked entity:
+With [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) —
+HACS, category Lovelace — you get real tiles from the household ranking, built
+from a template:
 
 ```yaml
 type: custom:auto-entities
@@ -114,14 +151,16 @@ error. Point the template at `sensor.pareto_recent` for the other list. The
 template is subscribed over the websocket, so the tiles re-render as soon as
 either sensor changes.
 
-Two things to expect once the tiles are on screen. Entities that only ever
-arrived through the history import get tiles too — a `binary_sensor` that
-changed as a *consequence* of your click, or an `automation` that ran because
-of it — and a tile for an automation toggles that automation. The domain
-blocklist under Options is the fix. And a tap on one of these tiles is itself
-a user service call, so the list feeds itself: whatever reaches the dashboard
-gets used more, and stays there. Neither is a reason not to do it, but both
-are easier to recognise than to diagnose later.
+`card_param: cards` is the line that is easy to leave out and hard to debug
+without: auto-entities writes its generated list into the card's `entities` key
+by default, and a grid card has no `entities` — you get an empty card and no
+error. Point the template at `sensor.pareto_recent` for the other list.
+
+This route shows the household ranking and has no way to tidy it, so the
+entities nobody wants a tile for have to go into the blocklists under Options.
+And note that a tap on any of these tiles is itself a counted service call, so
+the list feeds itself: whatever reaches a dashboard gets used more, and stays
+there. The card's edit mode exists for exactly that reason.
 
 ## Service
 
@@ -155,15 +194,21 @@ Home Assistant **user id** of whoever operated it:
 ```json
 "light.living_room_lamp": {
   "last_used": "2026-07-30T23:41:12+02:00",
-  "buckets": { "0123456789ab…": { "2026-07-30": 7, "2026-07-29": 3 } }
+  "buckets": { "0123456789ab…": { "2026-07-30": 7, "2026-07-29": 3 } },
+  "user_last_used": { "0123456789ab…": "2026-07-30T23:41:12+02:00" }
 }
 ```
 
 A user id maps back to a real person through Settings → People, so this is a
 per-person usage profile in plain text. `.storage/` is part of every Home
-Assistant backup, so it travels with any backup you send to cloud storage.
-Pareto keeps the per-user split only so a future card can show each household
-member their own list; Phase 1 itself always sums across everyone.
+Assistant backup, so it travels with any backup you send to cloud storage. The
+per-user split is what lets the card show each household member their own list;
+the sensors always sum across everyone.
+
+The same file also holds what each person hid or pinned in their card, under
+`prefs`, keyed by user id. Those are preferences rather than usage, but they are
+still a record of one person's choices, and they are not expired automatically:
+a hidden entry usually has no usage left to expire.
 
 Old entries are dropped automatically after `max(90, 6 × half-life)` days.
 Removing the integration deletes the file.
@@ -173,6 +218,12 @@ and Home Assistant states are readable by **every** signed-in account, not just
 administrators. In a shared home that means anyone can see when a given entity
 was last operated. If that matters to you — guest or child accounts, say —
 exclude the entities you would rather not expose.
+
+**The card's API.** `pareto/lists` answers with the calling account's own list
+and its own hidden entries, and `pareto/set_pref` writes only under the calling
+account. Both take the identity from the authenticated connection, never from
+the message, so one account cannot read or rewrite another's. Neither requires
+administrator rights: they touch nothing outside the caller's own preferences.
 
 **What leaves your instance:** nothing. Pareto has no external dependencies
 (`"requirements": []`), makes no network calls, and reads the recorder database
