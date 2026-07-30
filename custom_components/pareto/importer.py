@@ -23,11 +23,24 @@ async def async_fetch_logbook_day(
     reading day by day keeps memory bounded and behaviour predictable. During
     research the REST logbook returned different results for the same entity
     depending on window size, so large single queries are avoided.
-    """
-    from homeassistant.components.logbook.processor import EventProcessor
 
-    processor = EventProcessor(hass, [], entity_ids=None, device_ids=None, context_id=None)
-    return await hass.async_add_executor_job(processor.get_events, day_start, day_end)
+    ``event_types`` must be resolved through ``async_determine_event_types``,
+    mirroring the logbook's own REST view
+    (``homeassistant.components.logbook.rest_api``): passing an empty list
+    here made the underlying query ``Events.event_type_id.in_(())``, which
+    matches no rows at all, so nothing was ever imported. The query itself
+    must also run on the recorder's own executor via ``get_instance(hass)``,
+    not ``hass.async_add_executor_job`` -- the latter falls through to an
+    unpooled, unprotected SQLite connection and logs a usage warning naming
+    this integration on every call.
+    """
+    from homeassistant.components.logbook.helpers import async_determine_event_types
+    from homeassistant.components.logbook.processor import EventProcessor
+    from homeassistant.components.recorder import get_instance
+
+    event_types = async_determine_event_types(hass, None, None)
+    processor = EventProcessor(hass, event_types)
+    return await get_instance(hass).async_add_executor_job(processor.get_events, day_start, day_end)
 
 
 def _extract(row: dict[str, Any]) -> tuple[str, str, str, str] | None:
