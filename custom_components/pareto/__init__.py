@@ -5,19 +5,26 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+import voluptuous as vol
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryError
 
-from .const import DOMAIN
+from .const import ATTR_DAYS, DEFAULT_IMPORT_DAYS, DOMAIN, SERVICE_IMPORT_HISTORY
 from .coordinator import ParetoCoordinator
+from .importer import async_import_history
 from .store import ParetoStore, ParetoStoreError
 from .tracker import UsageTracker
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+IMPORT_SCHEMA = vol.Schema(
+    {vol.Optional(ATTR_DAYS, default=DEFAULT_IMPORT_DAYS): vol.All(int, vol.Range(min=1, max=90))}
+)
 
 
 @dataclass
@@ -63,6 +70,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+    # Registered only once setup has fully succeeded: if anything above had
+    # failed, a service left registered (or an import task left running)
+    # against a coordinator/store that was just unwound would be exactly the
+    # leak the try/except above exists to prevent.
+    async def _handle_import(call: ServiceCall) -> None:
+        written = await async_import_history(hass, store, call.data[ATTR_DAYS])
+        coordinator.async_recompute()
+        _LOGGER.info("Pareto history import finished, %s usages added", written)
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_IMPORT_HISTORY, _handle_import, schema=IMPORT_SCHEMA
+    )
+
+    async def _initial_import(_event=None) -> None:
+        """Backfill once at setup, in the background and never fatally."""
+        try:
+            written = await async_import_history(hass, store, DEFAULT_IMPORT_DAYS)
+        except Exception:  # noqa: BLE001 - setup must survive a failed import
+            _LOGGER.warning("Pareto history import failed", exc_info=True)
+            return
+        coordinator.async_recompute()
+        if written:
+            persistent_notification.async_create(
+                hass,
+                f"Pareto imported {written} past usages from the logbook.",
+                title="Pareto",
+                notification_id="pareto_import",
+            )
+
+    entry.async_create_background_task(hass, _initial_import(), "pareto_initial_import")
+
     return True
 
 
@@ -75,6 +114,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime: ParetoRuntime = hass.data[DOMAIN].pop(entry.entry_id)
     runtime.tracker.async_stop()
     await runtime.coordinator.async_stop()
+
+    if not hass.data[DOMAIN]:
+        hass.services.async_remove(DOMAIN, SERVICE_IMPORT_HISTORY)
     return True
 
 
