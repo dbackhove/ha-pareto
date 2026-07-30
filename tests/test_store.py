@@ -67,44 +67,44 @@ async def test_late_evening_lands_in_the_local_day(store):
 
 
 async def test_import_writes_into_an_empty_bucket(store):
-    assert store.record_import("light.a", USER_A, "2026-07-25", "2026-07-25T12:00:00+02:00")
+    assert store.record_import("light.a", USER_A, "2026-07-25", 1, "2026-07-25T12:00:00+02:00")
     assert store.aggregated()[0].counts == {"2026-07-25": 1}
 
 
 async def test_import_is_idempotent(store):
-    store.record_import("light.a", USER_A, "2026-07-25", "2026-07-25T12:00:00+02:00")
-    store.record_import("light.a", USER_A, "2026-07-25", "2026-07-25T12:00:00+02:00")
+    store.record_import("light.a", USER_A, "2026-07-25", 1, "2026-07-25T12:00:00+02:00")
+    store.record_import("light.a", USER_A, "2026-07-25", 1, "2026-07-25T12:00:00+02:00")
     assert store.aggregated()[0].counts == {"2026-07-25": 1}
 
 
 async def test_import_never_overwrites_live_data(store):
     store.record("light.a", USER_A, datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN))
-    wrote = store.record_import("light.a", USER_A, "2026-07-30", "2026-07-30T08:00:00+02:00")
+    wrote = store.record_import("light.a", USER_A, "2026-07-30", 1, "2026-07-30T08:00:00+02:00")
     assert wrote is False
     assert store.aggregated()[0].counts == {"2026-07-30": 1}
 
 
 async def test_import_fills_only_the_missing_day(store):
     store.record("light.a", USER_A, datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN))
-    store.record_import("light.a", USER_A, "2026-07-29", "2026-07-29T12:00:00+02:00")
+    store.record_import("light.a", USER_A, "2026-07-29", 1, "2026-07-29T12:00:00+02:00")
     assert store.aggregated()[0].counts == {"2026-07-29": 1, "2026-07-30": 1}
 
 
 async def test_prune_drops_old_buckets(store):
-    store.record_import("light.a", USER_A, "2026-01-01", "2026-01-01T12:00:00+01:00")
-    store.record_import("light.a", USER_A, "2026-07-30", "2026-07-30T12:00:00+02:00")
+    store.record_import("light.a", USER_A, "2026-01-01", 1, "2026-01-01T12:00:00+01:00")
+    store.record_import("light.a", USER_A, "2026-07-30", 1, "2026-07-30T12:00:00+02:00")
     store.prune(date(2026, 7, 30), keep_days=90)
     assert store.aggregated()[0].counts == {"2026-07-30": 1}
 
 
 async def test_prune_removes_entities_left_with_nothing(store):
-    store.record_import("light.a", USER_A, "2026-01-01", "2026-01-01T12:00:00+01:00")
+    store.record_import("light.a", USER_A, "2026-01-01", 1, "2026-01-01T12:00:00+01:00")
     store.prune(date(2026, 7, 30), keep_days=90)
     assert store.aggregated() == []
 
 
 async def test_prune_keeps_a_bucket_exactly_on_the_boundary(store):
-    store.record_import("light.a", USER_A, "2026-05-01", "2026-05-01T12:00:00+02:00")
+    store.record_import("light.a", USER_A, "2026-05-01", 1, "2026-05-01T12:00:00+02:00")
     store.prune(date(2026, 7, 30), keep_days=90)  # 2026-05-01 is 90 days before
     assert store.aggregated()[0].counts == {"2026-05-01": 1}
 

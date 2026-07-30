@@ -139,7 +139,7 @@ async def test_daily_pass_recomputes_without_new_events(hass):
 
 async def test_daily_pass_prunes_stale_buckets(hass):
     coordinator, store = await make(hass)
-    store.record_import("light.old", USER, "2020-01-01", "2020-01-01T12:00:00+01:00")
+    store.record_import("light.old", USER, "2020-01-01", 1, "2020-01-01T12:00:00+01:00")
     coordinator._async_daily(None)
     assert store.aggregated() == []
 

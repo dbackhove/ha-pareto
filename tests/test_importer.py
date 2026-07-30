@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from homeassistant.util import dt as dt_util
 
 from custom_components.pareto.importer import async_import_history
 from custom_components.pareto.store import ParetoStore
@@ -97,3 +98,22 @@ async def test_malformed_rows_are_skipped(hass, store):
     with patch(PATCH_TARGET, AsyncMock(side_effect=[rows] + [[]] * 9)):
         written = await async_import_history(hass, store, days=10)
     assert written == 1
+
+
+async def test_two_calls_on_the_same_day_aggregate_to_two(hass, store):
+    """record_import refuses a bucket that already exists, so importing one
+    row at a time would silently clamp every day to at most 1. The importer
+    must aggregate same-day rows before writing."""
+    rows = [
+        entry("light.a", "2026-07-28T09:00:00+02:00"),
+        entry("light.a", "2026-07-28T20:00:00+02:00"),
+    ]
+    with patch(PATCH_TARGET, AsyncMock(side_effect=[rows] + [[]] * 9)):
+        written = await async_import_history(hass, store, days=10)
+    assert written == 2
+    assert store.aggregated()[0].counts == {"2026-07-28": 2}
+    # Compared as datetimes, not strings: the test hass's local timezone need
+    # not be Berlin, so the stored last_used may carry a different offset for
+    # the very same instant.
+    last_used = dt_util.parse_datetime(store.aggregated()[0].last_used)
+    assert last_used == dt_util.parse_datetime("2026-07-28T20:00:00+02:00")

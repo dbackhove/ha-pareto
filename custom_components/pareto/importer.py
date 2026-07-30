@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -70,12 +71,32 @@ def _extract(row: dict[str, Any]) -> tuple[str, str, str, str] | None:
     return entity_id, user_id, local.date().isoformat(), local.isoformat()
 
 
-async def async_import_history(hass: HomeAssistant, store, days: int) -> int:
-    """Import up to ``days`` of past usage. Returns how many rows were written.
+def _latest_iso(a: str, b: str) -> str:
+    """Return whichever of two ISO timestamps is later, compared as datetimes.
 
-    Only writes into day buckets that do not exist yet, which makes the whole
-    thing idempotent, unable to clobber live data, and resumable after a
-    failure. A day that fails is logged and skipped, never fatal.
+    String comparison would rank e.g. two DST-offset timestamps backwards; an
+    unparseable value loses to one that parses.
+    """
+    parsed_a = dt_util.parse_datetime(a)
+    parsed_b = dt_util.parse_datetime(b)
+    if parsed_a is None:
+        return b
+    if parsed_b is None:
+        return a
+    return b if parsed_b > parsed_a else a
+
+
+async def async_import_history(hass: HomeAssistant, store, days: int) -> int:
+    """Import up to ``days`` of past usage. Returns how many usages were written.
+
+    The logbook is read one row per service call, but the store only writes
+    once per (entity, user, day) -- ``record_import`` refuses to touch a
+    bucket that already exists, so a second row for the same day would
+    otherwise be silently dropped instead of counted. Rows are aggregated
+    per day slice first, and each (entity, user, day) is then written with
+    its true total in a single call. This keeps the write idempotent, unable
+    to clobber live data, and resumable after a failure. A day that fails is
+    logged and skipped, never fatal.
     """
     written = 0
     today = dt_util.now().date()
@@ -91,6 +112,8 @@ async def async_import_history(hass: HomeAssistant, store, days: int) -> int:
             _LOGGER.warning("Pareto could not read the logbook for %s", day, exc_info=True)
             continue
 
+        counts: Counter[tuple[str, str, str]] = Counter()
+        latest_when: dict[tuple[str, str, str], str] = {}
         for row in rows or []:
             if not isinstance(row, dict):
                 continue
@@ -98,8 +121,15 @@ async def async_import_history(hass: HomeAssistant, store, days: int) -> int:
             if parsed is None:
                 continue
             entity_id, user_id, bucket_day, when_iso = parsed
-            if store.record_import(entity_id, user_id, bucket_day, when_iso):
-                written += 1
+            key = (entity_id, user_id, bucket_day)
+            counts[key] += 1
+            existing = latest_when.get(key)
+            latest_when[key] = when_iso if existing is None else _latest_iso(existing, when_iso)
+
+        for key, count in counts.items():
+            entity_id, user_id, bucket_day = key
+            if store.record_import(entity_id, user_id, bucket_day, count, latest_when[key]):
+                written += count
 
     _LOGGER.info("Pareto imported %s past usages", written)
     return written

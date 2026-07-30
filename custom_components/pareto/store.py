@@ -98,19 +98,26 @@ class ParetoStore:
         self.schedule_save()
 
     @callback
-    def record_import(self, entity_id: str, user_id: str, day: str, when_iso: str) -> bool:
-        """Write one historical usage, but only into a bucket that does not exist.
+    def record_import(
+        self, entity_id: str, user_id: str, day: str, count: int, when_iso: str
+    ) -> bool:
+        """Write one historical day's usage, but only into a bucket that does
+        not exist.
 
-        This single rule makes the import idempotent, stops it from ever
-        clobbering live data, and lets an aborted run resume by simply being
-        run again. Returns whether anything was written.
+        ``count`` is the true total for that (entity, user, day) -- the
+        importer aggregates same-day rows before calling this, so a lamp
+        operated twenty times on Monday is written as 20, not clamped to 1.
+        This single rule (never touch an existing bucket) makes the import
+        idempotent, stops it from ever clobbering live data, and lets an
+        aborted run resume by simply being run again. Returns whether
+        anything was written.
         """
         entry = self._entry(entity_id)
         buckets = entry["buckets"].setdefault(user_id, {})
         if day in buckets:
             return False
 
-        buckets[day] = 1
+        buckets[day] = count
         self._update_last_used(entry, when_iso)
         self.schedule_save()
         return True
