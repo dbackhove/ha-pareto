@@ -5,7 +5,7 @@ from homeassistant.const import EVENT_CALL_SERVICE
 from homeassistant.core import Context
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pareto.const import DOMAIN, SERVICE_IMPORT_HISTORY
+from custom_components.pareto.const import CONF_TOP_COUNT, DOMAIN, SERVICE_IMPORT_HISTORY
 from custom_components.pareto.store import ParetoStore, ParetoStoreError
 
 USER = "69d919fb68524e7086650439297dd452"
@@ -153,3 +153,35 @@ async def test_failed_platform_setup_does_not_leak_subsystems(hass):
     )
     await hass.async_block_till_done()
     assert created_stores[0].aggregated() == []
+
+
+async def test_data_survives_an_options_triggered_reload(hass):
+    """Finding 4: an options change reloads the entry via async_reload_entry.
+
+    Store.async_delay_save only *schedules* a write 60s out; a config-entry
+    reload is the normal path right after any options change. Without a
+    flush in async_unload_entry, the count recorded just above would still
+    be sitting in that pending window when the entry unloads, and the fresh
+    ParetoStore built during the immediately-following setup would read the
+    storage file before that write ever lands -- losing it.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN, options={})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    hass.states.async_set("light.a", "off")
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": {"entity_id": "light.a"}},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+
+    # Changing any option triggers exactly this reload path.
+    hass.config_entries.async_update_entry(entry, options={CONF_TOP_COUNT: 3})
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    assert [u.entity_id for u in runtime.store.aggregated()] == ["light.a"]

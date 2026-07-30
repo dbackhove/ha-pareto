@@ -158,3 +158,17 @@ class ParetoStore:
     def schedule_save(self) -> None:
         """Queue a delayed write. Bursts collapse into a single disk write."""
         self._store.async_delay_save(lambda: {"data": self._data}, SAVE_DELAY)
+
+    async def async_flush(self) -> None:
+        """Write the current state to disk immediately.
+
+        ``Store.async_save`` also cancels any pending delayed write, so this
+        is the only safe thing to call before this store's owner goes away:
+        without it, a reload (e.g. right after an options change) can start a
+        fresh ``ParetoStore`` that reads the file *before* this instance's
+        delayed write lands, after which every later save is built on that
+        stale snapshot -- silently losing up to ``SAVE_DELAY`` seconds of
+        counts. Call this from ``async_unload_entry`` and from the
+        setup-failure unwind path, which has the same exposure.
+        """
+        await self._store.async_save({"data": self._data})

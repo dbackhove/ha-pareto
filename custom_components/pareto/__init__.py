@@ -67,6 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         tracker.async_stop()
         await coordinator.async_stop()
+        await store.async_flush()
         raise
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -114,6 +115,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime: ParetoRuntime = hass.data[DOMAIN].pop(entry.entry_id)
     runtime.tracker.async_stop()
     await runtime.coordinator.async_stop()
+    # Without this, a pending 60s delayed save is still scheduled on this
+    # store's Store instance when unload returns. On the very next setup --
+    # e.g. right after an options change, which is the normal path here -- a
+    # fresh ParetoStore reads the file before that write lands, and every
+    # later save then builds on the stale snapshot it read.
+    await runtime.store.async_flush()
 
     if not hass.data[DOMAIN]:
         hass.services.async_remove(DOMAIN, SERVICE_IMPORT_HISTORY)

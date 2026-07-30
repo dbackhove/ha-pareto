@@ -137,6 +137,25 @@ async def test_newer_storage_format_refuses_to_load(hass):
         await s.async_load()
 
 
+async def test_flush_persists_a_pending_delayed_save(hass):
+    """There is otherwise no coverage at all of the save/load round trip.
+
+    async_delay_save only schedules a write; without async_flush forcing it
+    through Store.async_save immediately, a fresh ParetoStore created right
+    after (e.g. the reload after an options change) would read the file
+    before that delayed write ever lands."""
+    store = ParetoStore(hass)
+    await store.async_load()
+    store.record("light.a", USER_A, datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN))
+
+    await store.async_flush()
+
+    fresh = ParetoStore(hass)
+    await fresh.async_load()
+    assert fresh.aggregated()[0].entity_id == "light.a"
+    assert fresh.aggregated()[0].counts == {"2026-07-30": 1}
+
+
 async def test_last_used_survives_a_dst_fall_back(store):
     """02:30+02:00 and 02:30+01:00 are the same wall clock an hour apart.
     String comparison ranks them backwards; datetime comparison does not."""
