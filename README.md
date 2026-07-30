@@ -74,3 +74,7 @@ by `0.5 ^ (age_in_days / half_life)`. With the default half-life, something used
 twice yesterday outranks something used ten times six weeks ago. The lists are
 also recomputed once a day, because decay alone changes the order — otherwise a
 quiet week would leave the ranking frozen.
+
+## License
+
+[MIT](LICENSE) © 2026 Daniel Backhove.
