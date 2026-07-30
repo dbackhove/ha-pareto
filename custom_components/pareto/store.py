@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
+from homeassistant.util.dt import parse_datetime
 
 from .const import SAVE_DELAY, STORAGE_KEY, STORAGE_VERSION
 from .ranking import EntityUsage
@@ -64,6 +65,24 @@ class ParetoStore:
     def _entry(self, entity_id: str) -> dict[str, Any]:
         return self._data.setdefault(entity_id, {"last_used": None, "buckets": {}})
 
+    def _update_last_used(self, entry: dict[str, Any], when_iso: str) -> None:
+        """Update last_used if when_iso is later, using datetime comparison.
+
+        Compares parsed datetimes to handle DST transitions correctly. If the
+        stored last_used cannot be parsed, treats it as missing.
+        """
+        incoming = parse_datetime(when_iso)
+        if incoming is None:
+            return
+
+        if entry["last_used"] is None:
+            entry["last_used"] = when_iso
+            return
+
+        existing = parse_datetime(entry["last_used"])
+        if existing is None or incoming > existing:
+            entry["last_used"] = when_iso
+
     @callback
     def record(self, entity_id: str, user_id: str, when: datetime) -> None:
         """Count one live usage. ``when`` must already be in local time."""
@@ -73,8 +92,7 @@ class ParetoStore:
         buckets[day] = buckets.get(day, 0) + 1
 
         stamp = when.isoformat()
-        if entry["last_used"] is None or stamp > entry["last_used"]:
-            entry["last_used"] = stamp
+        self._update_last_used(entry, stamp)
         self.schedule_save()
 
     @callback
@@ -91,8 +109,7 @@ class ParetoStore:
             return False
 
         buckets[day] = 1
-        if entry["last_used"] is None or when_iso > entry["last_used"]:
-            entry["last_used"] = when_iso
+        self._update_last_used(entry, when_iso)
         self.schedule_save()
         return True
 

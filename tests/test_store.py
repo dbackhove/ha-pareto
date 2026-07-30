@@ -133,3 +133,22 @@ async def test_newer_storage_format_refuses_to_load(hass):
     with patch.object(s._store, "async_load", side_effect=NotImplementedError):
         with pytest.raises(ParetoStoreError):
             await s.async_load()
+
+
+async def test_last_used_survives_a_dst_fall_back(store):
+    """02:30+02:00 and 02:30+01:00 are the same wall clock an hour apart.
+    String comparison ranks them backwards; datetime comparison does not."""
+    summer = datetime(2026, 10, 25, 2, 30, tzinfo=timezone(timedelta(hours=2)))
+    winter = datetime(2026, 10, 25, 2, 30, tzinfo=timezone(timedelta(hours=1)))
+    store.record("light.a", USER_A, summer)
+    store.record("light.a", USER_A, winter)
+    assert store.aggregated()[0].last_used == winter.isoformat()
+
+
+async def test_a_later_record_does_not_regress_last_used(store):
+    """Recording an older timestamp after a newer one must not move it back."""
+    later = datetime(2026, 7, 30, 18, 0, tzinfo=BERLIN)
+    earlier = datetime(2026, 7, 30, 9, 0, tzinfo=BERLIN)
+    store.record("light.a", USER_A, later)
+    store.record("light.a", USER_A, earlier)
+    assert store.aggregated()[0].last_used == later.isoformat()
