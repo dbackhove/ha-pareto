@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -37,7 +37,6 @@ class ParetoListSensor(SensorEntity):
     _attr_has_entity_name = False
     _attr_should_poll = False
     _attr_icon = "mdi:sort-variant"
-    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self, coordinator: ParetoCoordinator, entry: ConfigEntry, mode: str, label: str
