@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# Nothing here writes to the repository; the default token grants more than
+# these jobs need.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
