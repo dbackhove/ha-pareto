@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pareto",
+        "description": "Pareto learns which entities you actually operate and publishes the most used and most recent ones as sensors. There is nothing to configure here — everything is available afterwards under Configure."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Pareto is already set up. Only one instance is needed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pareto options",
+        "data": {
+          "top_count": "Number of most used entities",
+          "recent_count": "Number of recently used entities",
+          "half_life_days": "Half-life in days",
+          "include_domains": "Only rank these domains",
+          "exclude_domains": "Never show these domains",
+          "exclude_entities": "Never show these entities",
+          "pinned_entities": "Always show these entities"
+        },
+        "data_description": {
+          "half_life_days": "How fast past usage loses weight. At 14 days, something used a fortnight ago counts half as much as today.",
+          "include_domains": "Leave empty to allow every domain.",
+          "pinned_entities": "Shown first, in this order, even if never used. Pinned entities count towards the numbers above."
+        }
+      }
+    }
+  },
+  "services": {
+    "import_history": {
+      "name": "Import history",
+      "description": "Reads past usage from the logbook. Only fills days that hold no data yet, so running it twice is safe.",
+      "fields": {
+        "days": {
+          "name": "Days",
+          "description": "How far back to read. Limited by your recorder retention, typically 10 days."
+        }
+      }
+    }
+  }
+}
