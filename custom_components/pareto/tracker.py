@@ -108,6 +108,13 @@ class UsageTracker:
             return
 
         targets = await async_resolve_targets(self._hass, domain, service, data, context)
+        # Nothing validates the ids carried on an EVENT_CALL_SERVICE, and the
+        # store happily creates an entry for any string it is handed. Since
+        # prune() only drops buckets by age, an add-on or integration firing
+        # invented ids would otherwise grow the file for a full retention
+        # window. Ranking filters unknown entities out of the *output* already;
+        # this keeps them out of storage in the first place.
+        targets = {e for e in targets if self._hass.states.get(e) is not None}
         if not targets:
             return
 

@@ -84,6 +84,13 @@ content: |
 data yet, so running it twice changes nothing and it can never overwrite what
 was recorded live.
 
+The call is **restricted to administrators**, and only one import runs at a
+time — a second request while one is in progress is declined rather than
+queued. A full scan reads the recorder on the same thread pool that serves your
+history and logbook views, so an unrestricted version of this would be an easy
+way for any account to stall them. Calls made from automations and scripts,
+which carry no user, are allowed through as usual.
+
 ## How the score works
 
 Every use is bucketed by local day. The score sums those buckets, weighting each
@@ -91,6 +98,40 @@ by `0.5 ^ (age_in_days / half_life)`. With the default half-life, something used
 twice yesterday outranks something used ten times six weeks ago. The lists are
 also recomputed once a day, because decay alone changes the order — otherwise a
 quiet week would leave the ranking frozen.
+
+## What Pareto stores, and who can read it
+
+Worth knowing before you install this, because it records something about the
+people in your home rather than about your devices.
+
+**On disk.** Counts live in `.storage/pareto_usage`, keyed by entity and by the
+Home Assistant **user id** of whoever operated it:
+
+```json
+"light.living_room_lamp": {
+  "last_used": "2026-07-30T23:41:12+02:00",
+  "buckets": { "69d919fb…": { "2026-07-30": 7, "2026-07-29": 3 } }
+}
+```
+
+A user id maps back to a real person through Settings → People, so this is a
+per-person usage profile in plain text. `.storage/` is part of every Home
+Assistant backup, so it travels with any backup you send to cloud storage.
+Pareto keeps the per-user split only so a future card can show each household
+member their own list; Phase 1 itself always sums across everyone.
+
+Old entries are dropped automatically after `max(90, 6 × half-life)` days.
+Removing the integration deletes the file.
+
+**In the UI.** The sensor attributes include `last_used` down to the second,
+and Home Assistant states are readable by **every** signed-in account, not just
+administrators. In a shared home that means anyone can see when a given entity
+was last operated. If that matters to you — guest or child accounts, say —
+exclude the entities you would rather not expose.
+
+**What leaves your instance:** nothing. Pareto has no external dependencies
+(`"requirements": []`), makes no network calls, and reads the recorder database
+only through Home Assistant's own logbook API.
 
 ## License
 

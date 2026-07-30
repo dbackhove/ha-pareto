@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -10,7 +11,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryError
+from homeassistant.exceptions import ConfigEntryError, Unauthorized
 
 from .const import ATTR_DAYS, DEFAULT_IMPORT_DAYS, DOMAIN, SERVICE_IMPORT_HISTORY
 from .coordinator import ParetoCoordinator
@@ -67,17 +68,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
         tracker.async_stop()
         await coordinator.async_stop()
-        await store.async_flush()
+        try:
+            await store.async_flush()
+        except Exception:  # must not replace the setup error being re-raised
+            _LOGGER.warning("Pareto could not write usage data while unwinding", exc_info=True)
         raise
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    # Registered only once setup has fully succeeded: if anything above had
-    # failed, a service left registered (or an import task left running)
-    # against a coordinator/store that was just unwound would be exactly the
-    # leak the try/except above exists to prevent.
+    # Everything below is wired only once setup has fully succeeded: if
+    # anything above had failed, a service left registered (or an import task
+    # left running) against a coordinator and store that were just unwound
+    # would be exactly the leak the try/except above exists to prevent.
+
+    # One import at a time. A full scan runs on the recorder's own executor --
+    # the pool that also serves history and the logbook -- so letting calls
+    # pile up would stall those for everyone. A second caller is turned away
+    # rather than queued: the work is idempotent, so waiting to redo it has no
+    # value. Shared with the setup-time backfill below, which could otherwise
+    # collide with a manual call.
+    import_lock = asyncio.Lock()
+
+    async def _run_import(days: int) -> int:
+        if import_lock.locked():
+            _LOGGER.warning("Pareto history import already running, ignoring this request")
+            return 0
+        async with import_lock:
+            return await async_import_history(hass, store, days)
+
     async def _handle_import(call: ServiceCall) -> None:
-        written = await async_import_history(hass, store, call.data[ATTR_DAYS])
+        # Home Assistant does not gate services on admin rights, so without
+        # this any signed-in account could trigger repeated recorder scans.
+        # A call with no user id comes from an automation or script and is
+        # allowed through, per the usual convention.
+        if call.context.user_id is not None:
+            user = await hass.auth.async_get_user(call.context.user_id)
+            if user is None or not user.is_admin:
+                raise Unauthorized(context=call.context)
+
+        written = await _run_import(call.data[ATTR_DAYS])
         coordinator.async_recompute()
         _LOGGER.info("Pareto history import finished, %s usages added", written)
 
@@ -88,7 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def _initial_import() -> None:
         """Backfill once at setup, in the background and never fatally."""
         try:
-            written = await async_import_history(hass, store, DEFAULT_IMPORT_DAYS)
+            written = await _run_import(DEFAULT_IMPORT_DAYS)
         except Exception:  # setup must survive a failed import
             _LOGGER.warning("Pareto history import failed", exc_info=True)
             return
@@ -107,7 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # options-triggered reload to write nothing is not "one-off" in any
     # useful sense. Repeat imports stay available through the
     # pareto.import_history service registered above.
-    if not store.raw():
+    if store.is_empty():
         entry.async_create_background_task(hass, _initial_import(), "pareto_initial_import")
 
     return True
@@ -127,7 +156,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # e.g. right after an options change, which is the normal path here -- a
     # fresh ParetoStore reads the file before that write lands, and every
     # later save then builds on the stale snapshot it read.
-    await runtime.store.async_flush()
+    #
+    # A disk error here must not abort teardown: the tracker and coordinator
+    # are already stopped, so raising would leave the entry half torn down and
+    # skip service deregistration below. Losing a minute of counts is the
+    # lesser failure.
+    try:
+        await runtime.store.async_flush()
+    except Exception:  # teardown must complete regardless
+        _LOGGER.warning("Pareto could not write usage data on unload", exc_info=True)
 
     if not hass.data[DOMAIN]:
         hass.services.async_remove(DOMAIN, SERVICE_IMPORT_HISTORY)
