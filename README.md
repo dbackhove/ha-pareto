@@ -67,7 +67,15 @@ sensor — `score`.
 
 ## Showing the list
 
-A card is planned. Until then, a Markdown card is enough to see the ranking:
+Home Assistant has no native way to build a list of cards from data. `tile` and
+`entities` take entity ids you wrote down in advance, and `entity-filter` only
+narrows a list that already exists. Turning a ranking into actual tiles
+therefore needs a custom card, always. A Pareto card is planned; until it
+exists, one of the two below will do.
+
+### Without installing anything
+
+A Markdown card renders the ranking as text:
 
 ```yaml
 type: markdown
@@ -77,6 +85,43 @@ content: |
      — {{ e.count }}x (score {{ e.score }})
   {% endfor %}
 ```
+
+### As real tiles, with auto-entities
+
+[auto-entities](https://github.com/thomasloven/lovelace-auto-entities) — HACS,
+category Lovelace — can build card configurations from a template, which is
+enough to get one working tile per ranked entity:
+
+```yaml
+type: custom:auto-entities
+show_empty: false
+card:
+  type: grid
+  columns: 2
+  square: false
+card_param: cards
+filter:
+  template: |
+    {%- for e in state_attr('sensor.pareto_top','entities') -%}
+      {{ {'type': 'tile', 'entity': e.entity_id} }},
+    {%- endfor -%}
+```
+
+`card_param: cards` is the line that is easy to leave out and hard to debug
+without: auto-entities writes its generated list into the card's `entities` key
+by default, and a grid card has no `entities` — you get an empty card and no
+error. Point the template at `sensor.pareto_recent` for the other list. The
+template is subscribed over the websocket, so the tiles re-render as soon as
+either sensor changes.
+
+Two things to expect once the tiles are on screen. Entities that only ever
+arrived through the history import get tiles too — a `binary_sensor` that
+changed as a *consequence* of your click, or an `automation` that ran because
+of it — and a tile for an automation toggles that automation. The domain
+blocklist under Options is the fix. And a tap on one of these tiles is itself
+a user service call, so the list feeds itself: whatever reaches the dashboard
+gets used more, and stays there. Neither is a reason not to do it, but both
+are easier to recognise than to diagnose later.
 
 ## Service
 
