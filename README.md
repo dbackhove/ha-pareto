@@ -16,15 +16,32 @@ Not counted, deliberately: HomeKit commands, physical switches, and other
 integrations acting on their own. Home Assistant does not attribute those to a
 user. Making this configurable is on the roadmap.
 
+**Anything acting through a long-lived access token counts as a human too.**
+Every such token belongs to an HA user, so Node-RED, AppDaemon, MCP servers and
+most third-party apps produce calls indistinguishable from a real click. If you
+run any of those, expect the Top list to include entities you never touch
+yourself — use the entity blocklist below as a workaround until a per-user
+filter exists.
+
 ## Installation
 
 1. Add this repository to HACS as a custom repository (category: Integration).
 2. Install **Pareto** and restart Home Assistant.
 3. Add the integration under **Settings → Devices & Services**.
 
-On setup, Pareto imports whatever usage your recorder still holds — normally
-about ten days — so the lists are useful immediately rather than after a
-fortnight of learning.
+The first time Pareto is set up — before anything has ever been recorded — it
+imports whatever usage your recorder still holds, normally about ten days, so
+the lists are useful immediately rather than after a fortnight of learning.
+Later setups and reloads (for instance after an options change) skip this scan
+since it would just re-read history it already has; run the
+`pareto.import_history` service any time you want to repeat it.
+
+Note that the backfill cannot exclude a script's follow-on calls the way the
+live tracker does, because the logbook row that Pareto reads them from does
+not carry that information. Those calls are therefore imported even though the
+live tracker would have ignored them, so day-1 rankings can look slightly
+different from the ranking a week in, once the backfilled days have aged out
+and only live-tracked days remain.
 
 ## Entities
 
