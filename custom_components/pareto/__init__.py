@@ -84,7 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DOMAIN, SERVICE_IMPORT_HISTORY, _handle_import, schema=IMPORT_SCHEMA
     )
 
-    async def _initial_import(_event=None) -> None:
+    async def _initial_import() -> None:
         """Backfill once at setup, in the background and never fatally."""
         try:
             written = await async_import_history(hass, store, DEFAULT_IMPORT_DAYS)

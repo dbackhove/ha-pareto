@@ -5,7 +5,7 @@ from homeassistant.const import EVENT_CALL_SERVICE
 from homeassistant.core import Context
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pareto.const import DOMAIN
+from custom_components.pareto.const import DOMAIN, SERVICE_IMPORT_HISTORY
 from custom_components.pareto.store import ParetoStore, ParetoStoreError
 
 USER = "69d919fb68524e7086650439297dd452"
@@ -19,11 +19,13 @@ async def test_setup_and_unload(hass):
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.LOADED
     assert entry.entry_id in hass.data[DOMAIN]
+    assert hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
 
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
     assert entry.entry_id not in hass.data[DOMAIN]
+    assert not hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
 
 
 async def test_tracking_is_live_after_setup(hass):
@@ -138,6 +140,9 @@ async def test_failed_platform_setup_does_not_leak_subsystems(hass):
 
     assert entry.entry_id not in hass.data.get(DOMAIN, {})
     assert len(created_stores) == 1
+    # Pins the placement correction: the service must be registered only after
+    # the try/except block succeeds, so a failure here must leave it absent.
+    assert not hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
 
     # The orphaned listener would still record this; prove it does not.
     hass.states.async_set("light.a", "off")
