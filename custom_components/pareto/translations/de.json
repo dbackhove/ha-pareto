@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Pareto",
-        "description": "Pareto lernt, welche Entities du tatsächlich bedienst, und veröffentlicht die meistgenutzten und die zuletzt genutzten als Sensoren. Hier gibt es nichts einzustellen — alles Weitere findest du danach unter Konfigurieren."
+        "description": "Pareto lernt, welche Entitäten du tatsächlich bedienst, und veröffentlicht die meistgenutzten und die zuletzt genutzten als Sensoren. Hier gibt es nichts einzustellen — alles Weitere findest du danach unter Konfigurieren."
       }
     },
     "abort": {
@@ -15,18 +15,18 @@
       "init": {
         "title": "Pareto-Optionen",
         "data": {
-          "top_count": "Anzahl der meistgenutzten Entities",
-          "recent_count": "Anzahl der zuletzt genutzten Entities",
+          "top_count": "Anzahl der meistgenutzten Entitäten",
+          "recent_count": "Anzahl der zuletzt genutzten Entitäten",
           "half_life_days": "Halbwertszeit in Tagen",
-          "include_domains": "Nur diese Domains ranken",
+          "include_domains": "Nur diese Domains berücksichtigen",
           "exclude_domains": "Diese Domains nie anzeigen",
-          "exclude_entities": "Diese Entities nie anzeigen",
-          "pinned_entities": "Diese Entities immer anzeigen"
+          "exclude_entities": "Diese Entitäten nie anzeigen",
+          "pinned_entities": "Diese Entitäten immer anzeigen"
         },
         "data_description": {
-          "half_life_days": "Wie schnell vergangene Nutzung an Gewicht verliert. Bei 14 Tagen zählt eine Bedienung von vor zwei Wochen halb so viel wie eine von heute.",
+          "half_life_days": "Wie schnell vergangene Nutzung an Gewicht verliert. Bei 14 Tagen zählt eine Nutzung von vor zwei Wochen halb so viel wie eine von heute.",
           "include_domains": "Leer lassen, um alle Domains zuzulassen.",
-          "pinned_entities": "Werden zuerst angezeigt, in dieser Reihenfolge, auch ohne jede Nutzung. Angeheftete Entities zählen gegen die Anzahlen oben."
+          "pinned_entities": "Werden zuerst angezeigt, in dieser Reihenfolge, auch ohne jede Nutzung. Angeheftete Entitäten werden auf die obigen Anzahlen angerechnet."
         }
       }
     }
