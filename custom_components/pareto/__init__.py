@@ -101,7 +101,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 notification_id="pareto_import",
             )
 
-    entry.async_create_background_task(hass, _initial_import(), "pareto_initial_import")
+    # Only the very first setup -- before anything has ever been recorded --
+    # runs the backfill automatically. On the reference installation a full
+    # scan is ~216k logbook rows; running it on every restart and every
+    # options-triggered reload to write nothing is not "one-off" in any
+    # useful sense. Repeat imports stay available through the
+    # pareto.import_history service registered above.
+    if not store.raw():
+        entry.async_create_background_task(hass, _initial_import(), "pareto_initial_import")
 
     return True
 

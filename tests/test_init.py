@@ -5,7 +5,12 @@ from homeassistant.const import EVENT_CALL_SERVICE
 from homeassistant.core import Context
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.pareto.const import CONF_TOP_COUNT, DOMAIN, SERVICE_IMPORT_HISTORY
+from custom_components.pareto.const import (
+    CONF_TOP_COUNT,
+    DOMAIN,
+    SERVICE_IMPORT_HISTORY,
+    STORAGE_KEY,
+)
 from custom_components.pareto.store import ParetoStore, ParetoStoreError
 
 USER = "69d919fb68524e7086650439297dd452"
@@ -185,3 +190,34 @@ async def test_data_survives_an_options_triggered_reload(hass):
     assert entry.state is ConfigEntryState.LOADED
     runtime = hass.data[DOMAIN][entry.entry_id]
     assert [u.entity_id for u in runtime.store.aggregated()] == ["light.a"]
+
+
+async def test_second_setup_with_existing_data_skips_the_automatic_import(hass, hass_storage):
+    """Finding 5: the automatic backfill must run only when the store starts
+    empty. On the reference installation a full scan is ~216k logbook rows;
+    running it on every restart and every options-triggered reload to write
+    nothing is not "one-off". Repeat imports stay available through the
+    pareto.import_history service.
+    """
+    hass_storage[STORAGE_KEY] = {
+        "version": 1,
+        "key": STORAGE_KEY,
+        # The outer "data" is HA's Store envelope; the inner one is ours --
+        # ParetoStore always saves {"data": self._data}.
+        "data": {
+            "data": {
+                "light.a": {
+                    "last_used": "2026-07-25T12:00:00+02:00",
+                    "buckets": {USER: {"2026-07-25": 1}},
+                }
+            }
+        },
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.pareto.async_import_history") as mock_import:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    mock_import.assert_not_called()
