@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -111,13 +112,17 @@ class ParetoCoordinator:
         return float(self._entry.options.get(CONF_HALF_LIFE_DAYS, DEFAULT_HALF_LIFE_DAYS))
 
     @callback
-    def async_recompute(self) -> None:
-        """Rebuild both lists from the store and notify listeners."""
+    def ranking_context(self) -> dict[str, Any]:
+        """Return the filter arguments ``build_ranked_list`` ranks with.
+
+        Exposed rather than kept private because the websocket API builds
+        per-user lists from the same options, with personal preferences
+        layered on top. Reading the config entry a second time over there
+        would work until the day the two readings drift apart.
+        """
         options = self._entry.options
-        usages = self._store.aggregated()
-        today = dt_util.now().date()
-        shared = {
-            "today": today,
+        return {
+            "today": dt_util.now().date(),
             "half_life_days": self._half_life,
             "include_domains": frozenset(options.get(CONF_INCLUDE_DOMAINS, [])),
             "exclude_domains": frozenset(options.get(CONF_EXCLUDE_DOMAINS, [])),
@@ -126,17 +131,23 @@ class ParetoCoordinator:
             "exists": lambda entity_id: self._hass.states.get(entity_id) is not None,
         }
 
-        self._top = build_ranked_list(
-            usages,
-            mode="top",
-            limit=int(options.get(CONF_TOP_COUNT, DEFAULT_TOP_COUNT)),
-            **shared,
-        )
+    @callback
+    def limit_for(self, mode: str) -> int:
+        """Return how many entries one list may hold."""
+        options = self._entry.options
+        if mode == "recent":
+            return int(options.get(CONF_RECENT_COUNT, DEFAULT_RECENT_COUNT))
+        return int(options.get(CONF_TOP_COUNT, DEFAULT_TOP_COUNT))
+
+    @callback
+    def async_recompute(self) -> None:
+        """Rebuild both lists from the store and notify listeners."""
+        usages = self._store.aggregated()
+        shared = self.ranking_context()
+
+        self._top = build_ranked_list(usages, mode="top", limit=self.limit_for("top"), **shared)
         self._recent = build_ranked_list(
-            usages,
-            mode="recent",
-            limit=int(options.get(CONF_RECENT_COUNT, DEFAULT_RECENT_COUNT)),
-            **shared,
+            usages, mode="recent", limit=self.limit_for("recent"), **shared
         )
 
         for listener in list(self._listeners):

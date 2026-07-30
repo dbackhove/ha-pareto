@@ -9,6 +9,10 @@
     "@dbackhove"
   ],
   "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http"
+  ],
   "documentation": "https://github.com/dbackhove/ha-pareto",
   "integration_type": "service",
   "iot_class": "calculated",

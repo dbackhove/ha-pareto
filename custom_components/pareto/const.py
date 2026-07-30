@@ -35,3 +35,8 @@ BLOCKED_SERVICES: Final = frozenset({"homeassistant.update_entity", "logbook.log
 SERVICE_IMPORT_HISTORY: Final = "import_history"
 ATTR_DAYS: Final = "days"
 DEFAULT_IMPORT_DAYS: Final = 10
+
+# The card ships inside the integration -- HACS allows one category per
+# repository, so it cannot be a second, Lovelace-category entry.
+CARD_FILENAME: Final = "pareto-card.js"
+CARD_URL: Final = "/pareto_static/pareto-card.js"
