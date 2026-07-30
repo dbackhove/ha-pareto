@@ -7,7 +7,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.pareto.const import DOMAIN
 
 BERLIN = timezone(timedelta(hours=2))
-USER = "69d919fb68524e7086650439297dd452"
+USER = "0123456789abcdef0123456789abcdef"
 
 
 async def setup_pareto(hass, options=None):

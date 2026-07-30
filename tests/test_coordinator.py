@@ -15,7 +15,7 @@ from custom_components.pareto.coordinator import ParetoCoordinator
 from custom_components.pareto.store import ParetoStore
 
 BERLIN = timezone(timedelta(hours=2))
-USER = "69d919fb68524e7086650439297dd452"
+USER = "0123456789abcdef0123456789abcdef"
 
 
 async def make(hass, options=None):

@@ -7,7 +7,7 @@ from homeassistant.core import Context
 from custom_components.pareto.store import ParetoStore
 from custom_components.pareto.tracker import UsageTracker, is_blocked_service
 
-USER = "69d919fb68524e7086650439297dd452"
+USER = "0123456789abcdef0123456789abcdef"
 
 
 @pytest.fixture

@@ -6,7 +6,7 @@ import pytest
 from custom_components.pareto.store import ParetoStore, ParetoStoreError
 
 BERLIN = timezone(timedelta(hours=2))
-USER_A = "69d919fb68524e7086650439297dd452"
+USER_A = "0123456789abcdef0123456789abcdef"
 USER_B = "a3f1c2d4e5f6a7b8c9d0e1f2a3b4c5d6"
 
 

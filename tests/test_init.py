@@ -13,7 +13,7 @@ from custom_components.pareto.const import (
 )
 from custom_components.pareto.store import ParetoStore, ParetoStoreError
 
-USER = "69d919fb68524e7086650439297dd452"
+USER = "0123456789abcdef0123456789abcdef"
 
 
 async def test_setup_and_unload(hass):

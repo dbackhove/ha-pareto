@@ -8,7 +8,7 @@ from custom_components.pareto.importer import async_import_history
 from custom_components.pareto.store import ParetoStore
 
 BERLIN = timezone(timedelta(hours=2))
-USER = "69d919fb68524e7086650439297dd452"
+USER = "0123456789abcdef0123456789abcdef"
 PATCH_TARGET = "custom_components.pareto.importer.async_fetch_logbook_day"
 
 

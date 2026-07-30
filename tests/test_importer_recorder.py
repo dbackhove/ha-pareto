@@ -39,7 +39,7 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 from custom_components.pareto.importer import async_import_history
 from custom_components.pareto.store import ParetoStore
 
-USER = "69d919fb68524e7086650439297dd452"
+USER = "0123456789abcdef0123456789abcdef"
 
 
 @pytest.fixture(autouse=True)
