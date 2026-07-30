@@ -130,9 +130,11 @@ async def test_newer_storage_format_refuses_to_load(hass):
     overwrote real data. Refusing to load surfaces it instead.
     """
     s = ParetoStore(hass)
-    with patch.object(s._store, "async_load", side_effect=NotImplementedError):
-        with pytest.raises(ParetoStoreError):
-            await s.async_load()
+    with (
+        patch.object(s._store, "async_load", side_effect=NotImplementedError),
+        pytest.raises(ParetoStoreError),
+    ):
+        await s.async_load()
 
 
 async def test_last_used_survives_a_dst_fall_back(store):

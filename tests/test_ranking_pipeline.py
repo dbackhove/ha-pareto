@@ -16,8 +16,17 @@ def usage(entity_id: str, count: int, day: str = "2026-07-30", last_used: str | 
     )
 
 
-def build(usages, *, mode="top", limit=10, include=NONE, exclude_d=NONE,
-          exclude_e=NONE, pinned=(), exists=lambda _e: True):
+def build(
+    usages,
+    *,
+    mode="top",
+    limit=10,
+    include=NONE,
+    exclude_d=NONE,
+    exclude_e=NONE,
+    pinned=(),
+    exists=lambda _e: True,
+):
     return build_ranked_list(
         usages,
         mode=mode,

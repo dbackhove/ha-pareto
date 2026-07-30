@@ -63,7 +63,7 @@ async def async_resolve_targets(
         # before the integration's actual minimum supported HA version.
         selected = async_extract_referenced_entity_ids(hass, TargetSelection(data))
         return set(selected.referenced) | set(selected.indirectly_referenced)
-    except Exception:  # noqa: BLE001 - one odd call must not stop tracking
+    except Exception:  # one odd call must not stop tracking
         _LOGGER.debug("Could not resolve targets for %s.%s", domain, service, exc_info=True)
         return set()
 

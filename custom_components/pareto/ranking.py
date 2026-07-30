@@ -144,9 +144,7 @@ def build_ranked_list(
         candidates = [u for u in candidates if u.last_used is not None]
         candidates.sort(key=lambda u: u.last_used or "", reverse=True)
     else:
-        candidates.sort(
-            key=lambda u: decay_score(u.counts, today, half_life_days), reverse=True
-        )
+        candidates.sort(key=lambda u: decay_score(u.counts, today, half_life_days), reverse=True)
 
     ranked = [to_ranked(e, True) for e in pinned_ids]
     ranked.extend(to_ranked(u.entity_id, False) for u in candidates)

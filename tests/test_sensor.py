@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
-from homeassistant.core import Context
 from homeassistant.const import EVENT_CALL_SERVICE
+from homeassistant.core import Context
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pareto.const import DOMAIN

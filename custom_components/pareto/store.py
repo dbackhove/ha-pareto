@@ -46,8 +46,10 @@ class ParetoStore:
             raise ParetoStoreError(
                 "Pareto storage was written by a newer version and cannot be read"
             ) from err
-        except Exception:  # noqa: BLE001 - never let bad data block setup
-            _LOGGER.warning("Could not read Pareto storage, starting with empty data", exc_info=True)
+        except Exception:  # never let bad data block setup
+            _LOGGER.warning(
+                "Could not read Pareto storage, starting with empty data", exc_info=True
+            )
             self._data = {}
             return
 

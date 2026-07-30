@@ -88,7 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Backfill once at setup, in the background and never fatally."""
         try:
             written = await async_import_history(hass, store, DEFAULT_IMPORT_DAYS)
-        except Exception:  # noqa: BLE001 - setup must survive a failed import
+        except Exception:  # setup must survive a failed import
             _LOGGER.warning("Pareto history import failed", exc_info=True)
             return
         coordinator.async_recompute()

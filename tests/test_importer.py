@@ -55,7 +55,9 @@ async def test_skips_non_service_call_entries(hass, store):
 
 async def test_skips_blocked_services(hass, store):
     rows = [
-        entry("light.a", "2026-07-28T12:00:00+02:00", domain="homeassistant", service="update_entity")
+        entry(
+            "light.a", "2026-07-28T12:00:00+02:00", domain="homeassistant", service="update_entity"
+        )
     ]
     with patch(PATCH_TARGET, AsyncMock(side_effect=[rows] + [[]] * 9)):
         written = await async_import_history(hass, store, days=10)

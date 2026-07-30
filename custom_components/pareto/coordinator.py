@@ -142,5 +142,5 @@ class ParetoCoordinator:
         for listener in list(self._listeners):
             try:
                 listener()
-            except Exception:  # noqa: BLE001 - one bad sensor must not block the rest
+            except Exception:  # one bad sensor must not block the rest
                 _LOGGER.exception("Pareto listener raised during update")

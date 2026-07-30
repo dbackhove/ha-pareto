@@ -66,7 +66,7 @@ async def test_multiple_entity_ids_each_count(wired):
 
 
 async def test_callback_fires_once_per_call_not_once_per_entity(wired):
-    hass, store, on_recorded = wired
+    hass, _store, on_recorded = wired
     await fire(
         hass, "light", "turn_on", {"entity_id": ["light.a", "light.b"]}, Context(user_id=USER)
     )
@@ -109,13 +109,13 @@ async def test_reload_service_is_not_counted(wired):
 
 
 async def test_callback_fires_when_something_was_recorded(wired):
-    hass, store, on_recorded = wired
+    hass, _store, on_recorded = wired
     await fire(hass, "light", "turn_on", {"entity_id": "light.a"}, Context(user_id=USER))
     assert on_recorded.called
 
 
 async def test_callback_does_not_fire_for_ignored_events(wired):
-    hass, store, on_recorded = wired
+    hass, _store, on_recorded = wired
     await fire(hass, "light", "turn_on", {"entity_id": "light.a"}, Context())
     assert not on_recorded.called
 

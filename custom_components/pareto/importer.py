@@ -27,9 +27,7 @@ async def async_fetch_logbook_day(
     from homeassistant.components.logbook.processor import EventProcessor
 
     processor = EventProcessor(hass, [], entity_ids=None, device_ids=None, context_id=None)
-    return await hass.async_add_executor_job(
-        processor.get_events, day_start, day_end
-    )
+    return await hass.async_add_executor_job(processor.get_events, day_start, day_end)
 
 
 def _extract(row: dict[str, Any]) -> tuple[str, str, str, str] | None:
@@ -76,7 +74,7 @@ async def async_import_history(hass: HomeAssistant, store, days: int) -> int:
 
         try:
             rows = await async_fetch_logbook_day(hass, day_start, day_end)
-        except Exception:  # noqa: BLE001 - one bad day must not lose the rest
+        except Exception:  # one bad day must not lose the rest
             _LOGGER.warning("Pareto could not read the logbook for %s", day, exc_info=True)
             continue
 

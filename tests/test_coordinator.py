@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
-import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pareto.const import (
