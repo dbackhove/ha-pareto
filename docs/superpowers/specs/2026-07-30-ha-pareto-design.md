@@ -239,18 +239,39 @@ Historie fehlt.
 
 ## 8. Backfill
 
-Läuft beim Setup automatisch als Hintergrund-Task und ist zusätzlich als Service
-`pareto.import_history` (optionaler Parameter `days`) jederzeit erneut auslösbar.
+**Korrektur nach Review (2026-07-30):** Ursprünglich lief der Backfill bei jedem
+Setup automatisch, auch bei jedem Reload nach einer Options-Änderung. Auf der
+Referenzinstallation sind das ~216.000 gescannte Logbuch-Zeilen bei jedem
+Neustart und jeder Options-Änderung, um danach nichts zu schreiben — der
+Idempotenz-Regel sei Dank, aber trotzdem reine Verschwendung. Entscheidung des
+Projekt-Owners: **Der automatische Lauf passiert nur, solange der Store beim
+Setup noch leer ist** (erstes Setup, oder nachdem alle Daten verloren gingen).
+Jeder spätere Lauf — inklusive Reload nach einer Options-Änderung — überspringt
+ihn. Ein erneuter Import bleibt jederzeit über den Service
+`pareto.import_history` (optionaler Parameter `days`) auslösbar; dieser Service
+prüft nicht, ob der Store leer ist, und funktioniert unverändert.
 
-**Quelle:** die interne Python-API des Logbooks (`logbook.processor.async_get_events`),
+**Quelle:** die interne Python-API des Logbooks (`logbook.processor.EventProcessor`),
 nicht die REST-Schnittstelle. Gelesen wird in Tagesscheiben. Grund: Bei der Recherche
 lieferte dieselbe Entity über die REST-API je nach Fenstergröße widersprüchliche
 Ergebnisse (72 h → 2 Treffer, 240 h → 1 anderer Treffer). Chunking macht das
-Verhalten vorhersagbar und begrenzt den Speicherbedarf.
+Verhalten vorhersagbar und begrenzt den Speicherbedarf. Die `event_types` für den
+`EventProcessor` müssen über `logbook.helpers.async_determine_event_types` bestimmt
+werden (wie im REST-View des Logbooks selbst) — eine leere Liste ergibt eine
+SQL-Abfrage, die keine Zeile trifft, und der Backfill importiert dann grundsätzlich
+nichts. Die Abfrage muss außerdem über den Executor des Recorders laufen
+(`recorder.get_instance(hass).async_add_executor_job`, nicht
+`hass.async_add_executor_job`), sonst öffnet jede Tagesscheibe eine ungepoolte
+SQLite-Verbindung und loggt eine Recorder-Warnung mit dem Namen dieser Integration.
 
 **Gefiltert wird** auf `context_event_type == "call_service"` mit gesetzter
 `context_user_id` — dieselbe Semantik wie die Live-Erfassung, soweit das Logbuch sie
-hergibt.
+hergibt. **Der `parent_id`-Filter aus Abschnitt 3 ist dabei ausdrücklich nicht
+anwendbar:** Der Logbuch-Eintrag trägt keine `parent_id`. Die Folgeaufrufe eines
+Skripts werden beim Backfill deshalb importiert, obwohl die Live-Erfassung nur die
+ursprüngliche Bedienung gezählt hätte. Tag-1-Ranglisten unterscheiden sich dadurch
+leicht von späteren, sobald die importierten Tage aus der Retention gefallen sind
+und nur noch live erfasste Tage übrig sind.
 
 **Idempotenz-Regel: Der Import schreibt ausschließlich in Tages-Buckets, die noch
 nicht existieren.** Das löst drei Probleme mit einer Regel:
@@ -258,6 +279,14 @@ nicht existieren.** Das löst drei Probleme mit einer Regel:
 - Ein zweiter Lauf verdoppelt keine Zahlen.
 - Live erfasste Daten werden nie überschrieben.
 - Ein abgebrochener Import wird beim Wiederholen genau dort ergänzt, wo er endete.
+
+Das Logbuch liefert eine Zeile pro Bedienung, nicht eine Summe pro Tag. Ein
+Schreibzugriff pro Zeile würde die Regel selbst unterlaufen: Die zweite Zeile für
+denselben Tag träfe auf einen inzwischen existierenden Bucket und würde verworfen —
+jeder importierte Tag zählte dann nie mehr als 1, unabhängig von der tatsächlichen
+Nutzung. Der Import aggregiert deshalb alle Zeilen einer Tagesscheibe je (Entity,
+Nutzer, Tag) zuerst und schreibt danach genau einmal pro noch leerem Bucket, mit der
+echten Summe als Wert.
 
 **Reichweite:** Begrenzt durch die Recorder-Retention, in der Referenzinstallation
 ~10 Tage. Bei 14 Tagen Halbwertszeit ist das trotzdem substanziell — die Liste ist ab
@@ -300,6 +329,10 @@ custom_components/pareto/
   translations/de.json
 hacs.json
 README.md
+LICENSE              MIT, Copyright Daniel Backhove — ohne diese Datei ist das
+                     Repo trotz öffentlicher Veröffentlichung rechtlich
+                     "all rights reserved" und darf von niemandem sonst
+                     verteilt oder geforkt werden.
 ```
 
 **`ranking.py` hat keine Home-Assistant-Abhängigkeit.** Es nimmt ein Dict aus
@@ -333,9 +366,31 @@ denen dieser Entwurf fehleranfällig ist:
   zählen gegen X; Pin ohne Nutzungshistorie erscheint mit `count: 0`.
 - **Import-Idempotenz:** zweimaliger Lauf über dieselbe Periode → identische Zahlen.
 - **Import kollidiert nicht mit Live-Daten:** existierender Bucket bleibt unverändert.
-- **Robustheit:** beschädigter Store → leerer Start statt Crash.
+- **Robustheit:** beschädigter Store → leerer Start statt Crash. Das schließt einen
+  Eintrag ein, der gültiges JSON ist, aber `buckets` fehlt — auch das darf nicht aus
+  `aggregated()`/`prune()` herausfallen.
 - **Täglicher Recompute:** ohne neue Events ändert sich nach Zeitsprung die
   Reihenfolge erwartungsgemäß.
+
+**Ergänzt nach Review (2026-07-30)**, weil genau diese Lücken mehrere der oben
+beschriebenen Korrekturen neun Task-Reviews überleben ließen:
+
+- **Echter Recorder-Pfad:** ein Test mit `recorder_mock`, der einen echten
+  Service-Call feuert und über den echten `EventProcessor` (nicht die gemockte
+  `async_fetch_logbook_day`-Naht) importiert. Nur so fällt ein Bug wie ein leeres
+  `event_types` auf, der sonst nur die Mock-Naht trifft.
+- **Reload-Pfad:** ein Test, der die Options-Update-Listener-Kette tatsächlich
+  durchläuft (Setup → Aufzeichnung → Options-Änderung → Reload) und prüft, dass die
+  Zählung den Reload übersteht.
+- **Live gelesene Optionen:** ein Test, der `entry.options` nach dem Bau des
+  Coordinators ändert und neu berechnet, um zu verhindern, dass eine Option
+  versehentlich nur einmal im Konstruktor gelesen wird.
+- **Pruning mit konfigurierbarer Halbwertszeit:** ein Test mit
+  `half_life_days` ungleich dem Default und einem Bucket, dessen Alter zwischen
+  `MIN_RETENTION_DAYS` und `retention_days(half_life)` liegt — nur so lässt sich
+  eine echte Berechnung von einer hartcodierten 90 unterscheiden.
+- **Import-Aggregation:** zwei Logbuch-Zeilen für dieselbe Entity am selben Tag
+  müssen als Zähler 2 ankommen, nicht als 1 (siehe Abschnitt 8).
 
 ## 12. Sichtbarkeit in Phase 1
 

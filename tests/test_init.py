@@ -1,0 +1,223 @@
+from unittest.mock import Mock, patch
+
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import EVENT_CALL_SERVICE
+from homeassistant.core import Context
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.pareto.const import (
+    CONF_TOP_COUNT,
+    DOMAIN,
+    SERVICE_IMPORT_HISTORY,
+    STORAGE_KEY,
+)
+from custom_components.pareto.store import ParetoStore, ParetoStoreError
+
+USER = "69d919fb68524e7086650439297dd452"
+
+
+async def test_setup_and_unload(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.entry_id in hass.data[DOMAIN]
+    assert hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    assert entry.entry_id not in hass.data[DOMAIN]
+    assert not hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
+
+
+async def test_tracking_is_live_after_setup(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    hass.states.async_set("light.a", "off")
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": {"entity_id": "light.a"}},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    assert [u.entity_id for u in runtime.store.aggregated()] == ["light.a"]
+
+
+async def test_tracking_stops_after_unload(hass):
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    runtime = hass.data[DOMAIN][entry.entry_id]
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    hass.states.async_set("light.b", "off")
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": {"entity_id": "light.b"}},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+    assert [u.entity_id for u in runtime.store.aggregated()] == []
+
+
+async def test_daily_timer_is_cancelled_on_unload(hass):
+    """Unload must cancel the coordinator's daily timer, not just the tracker.
+
+    A leaked timer would keep firing after every reload, recomputing against a
+    coordinator/entry pairing that no longer belongs to the live config entry.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    unsub_daily = Mock()
+    with patch(
+        "custom_components.pareto.coordinator.async_track_time_change",
+        return_value=unsub_daily,
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert not unsub_daily.called
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert unsub_daily.called
+
+
+async def test_store_error_aborts_setup_instead_of_being_swallowed(hass):
+    """Data written by a newer Pareto must refuse setup, not be silently ignored."""
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.pareto.ParetoStore.async_load",
+        side_effect=ParetoStoreError("written by a newer version"),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_ERROR
+    assert entry.reason is not None and "newer version" in entry.reason
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
+
+
+async def test_failed_platform_setup_does_not_leak_subsystems(hass):
+    """If forwarding to the sensor platform fails, setup must leave no live
+    timer or event listener behind.
+
+    HA never calls async_unload_entry for an entry that never reached
+    LOADED (config_entries.py's __async_setup_with_context only stores
+    setup-failure state; ConfigEntry.async_unload short-circuits straight to
+    NOT_LOADED). So anything started before the failure has to unwind itself,
+    or it runs -- and keeps mutating the on-disk store -- forever.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    created_stores: list[ParetoStore] = []
+
+    def _spy_store(hass_):
+        store = ParetoStore(hass_)
+        created_stores.append(store)
+        return store
+
+    with (
+        patch("custom_components.pareto.ParetoStore", side_effect=_spy_store),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            side_effect=RuntimeError("platform boom"),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
+    assert len(created_stores) == 1
+    # Pins the placement correction: the service must be registered only after
+    # the try/except block succeeds, so a failure here must leave it absent.
+    assert not hass.services.has_service(DOMAIN, SERVICE_IMPORT_HISTORY)
+
+    # The orphaned listener would still record this; prove it does not.
+    hass.states.async_set("light.a", "off")
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": {"entity_id": "light.a"}},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+    assert created_stores[0].aggregated() == []
+
+
+async def test_data_survives_an_options_triggered_reload(hass):
+    """Finding 4: an options change reloads the entry via async_reload_entry.
+
+    Store.async_delay_save only *schedules* a write 60s out; a config-entry
+    reload is the normal path right after any options change. Without a
+    flush in async_unload_entry, the count recorded just above would still
+    be sitting in that pending window when the entry unloads, and the fresh
+    ParetoStore built during the immediately-following setup would read the
+    storage file before that write ever lands -- losing it.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN, options={})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    hass.states.async_set("light.a", "off")
+    hass.bus.async_fire(
+        EVENT_CALL_SERVICE,
+        {"domain": "light", "service": "turn_on", "service_data": {"entity_id": "light.a"}},
+        context=Context(user_id=USER),
+    )
+    await hass.async_block_till_done()
+
+    # Changing any option triggers exactly this reload path.
+    hass.config_entries.async_update_entry(entry, options={CONF_TOP_COUNT: 3})
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    assert [u.entity_id for u in runtime.store.aggregated()] == ["light.a"]
+
+
+async def test_second_setup_with_existing_data_skips_the_automatic_import(hass, hass_storage):
+    """Finding 5: the automatic backfill must run only when the store starts
+    empty. On the reference installation a full scan is ~216k logbook rows;
+    running it on every restart and every options-triggered reload to write
+    nothing is not "one-off". Repeat imports stay available through the
+    pareto.import_history service.
+    """
+    hass_storage[STORAGE_KEY] = {
+        "version": 1,
+        "key": STORAGE_KEY,
+        # The outer "data" is HA's Store envelope; the inner one is ours --
+        # ParetoStore always saves {"data": self._data}.
+        "data": {
+            "data": {
+                "light.a": {
+                    "last_used": "2026-07-25T12:00:00+02:00",
+                    "buckets": {USER: {"2026-07-25": 1}},
+                }
+            }
+        },
+    }
+    entry = MockConfigEntry(domain=DOMAIN, data={}, unique_id=DOMAIN)
+    entry.add_to_hass(hass)
+
+    with patch("custom_components.pareto.async_import_history") as mock_import:
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    mock_import.assert_not_called()

@@ -1682,19 +1682,19 @@ git commit -m "feat: add coordinator with debounced and daily recompute"
 
 - [ ] **Step 1: Create `custom_components/pareto/manifest.json`**
 
-Replace `YOUR_GITHUB_USER` with the real account before the repo is pushed.
+Use these values verbatim — `dbackhove` is the real GitHub account.
 
 ```json
 {
   "domain": "pareto",
   "name": "Pareto",
-  "codeowners": ["@YOUR_GITHUB_USER"],
+  "codeowners": ["@dbackhove"],
   "config_flow": true,
   "after_dependencies": ["recorder", "logbook"],
-  "documentation": "https://github.com/YOUR_GITHUB_USER/ha-pareto",
+  "documentation": "https://github.com/dbackhove/ha-pareto",
   "integration_type": "service",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/YOUR_GITHUB_USER/ha-pareto/issues",
+  "issue_tracker": "https://github.com/dbackhove/ha-pareto/issues",
   "requirements": [],
   "version": "0.1.0"
 }
@@ -2690,11 +2690,11 @@ def test_german_translation_matches_strings():
     assert keys(load("strings.json")) == keys(load("translations/de.json"))
 
 
-def test_manifest_has_no_placeholder_account():
+def test_manifest_points_at_the_real_repository():
     manifest = load("manifest.json")
-    assert "YOUR_GITHUB_USER" not in json.dumps(manifest), (
-        "Set the real GitHub account in manifest.json before publishing"
-    )
+    assert manifest["codeowners"] == ["@dbackhove"]
+    assert manifest["documentation"] == "https://github.com/dbackhove/ha-pareto"
+    assert manifest["issue_tracker"] == "https://github.com/dbackhove/ha-pareto/issues"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2756,10 +2756,11 @@ Expected: FAIL — `de.json` does not exist, and the manifest still holds the pl
 }
 ```
 
-- [ ] **Step 4: Set the real GitHub account**
+- [ ] **Step 4: Confirm the manifest points at the real repository**
 
-Replace every `YOUR_GITHUB_USER` in `custom_components/pareto/manifest.json` with the
-actual account the repo will live under.
+`manifest.json` was written in Task 6 with the real account (`dbackhove`). Verify
+`codeowners`, `documentation` and `issue_tracker` match what the test above expects;
+no edit should be needed.
 
 - [ ] **Step 5: Create `hacs.json`**
 
