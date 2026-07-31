@@ -45,6 +45,7 @@ export interface ParetoCardConfig {
   type: string;
   mode: Mode;
   title?: string;
+  show_title: boolean;
   columns?: number;
 }
 

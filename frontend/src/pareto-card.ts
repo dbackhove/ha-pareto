@@ -17,6 +17,7 @@ import {
   parseConfig,
   shouldRefetch,
 } from "./logic";
+import "./editor";
 import { translate, type StringKey } from "./strings";
 import type {
   CardHelpers,
@@ -51,7 +52,10 @@ class ParetoCard extends LitElement {
   private _hass?: HomeAssistant;
   private _helpers?: CardHelpers;
   private _tiles = new Map<string, LovelaceCard>();
-  private _lastFetch: number | null = null;
+  private _loading = false;
+  // Deliberately the last *attempt*, not the last success. A card whose fetch
+  // failed must still be throttled, or it retries forever at state-change rate.
+  private _lastAttempt: number | null = null;
 
   private _onVisibility = (): void => {
     if (document.visibilityState === "visible") {
@@ -61,6 +65,10 @@ class ParetoCard extends LitElement {
 
   static getStubConfig(): Record<string, unknown> {
     return { mode: "top" };
+  }
+
+  static getConfigElement(): HTMLElement {
+    return document.createElement("pareto-card-editor");
   }
 
   setConfig(config: unknown): void {
@@ -84,7 +92,10 @@ class ParetoCard extends LitElement {
       tile.hass = hass;
     }
     if (this._lists === undefined) {
-      void this._load(true);
+      // Not forced. hass is reassigned on every state change in the house, so
+      // forcing here turns a single failed fetch into one request per state
+      // change, for as long as the card is on screen.
+      void this._load(false);
     }
   }
 
@@ -132,22 +143,27 @@ class ParetoCard extends LitElement {
   }
 
   private async _load(force: boolean): Promise<void> {
-    if (!this._hass || !this._config) {
+    if (!this._hass || !this._config || this._loading) {
       return;
     }
-    if (!force && !shouldRefetch(this._lastFetch, Date.now())) {
+    if (!force && !shouldRefetch(this._lastAttempt, Date.now())) {
       return;
     }
 
+    this._loading = true;
     try {
       await this._ensureHelpers();
       const lists = await this._hass.callWS<ParetoLists>({ type: "pareto/lists" });
-      this._lastFetch = Date.now();
       this._lists = lists;
       this._error = undefined;
       this._syncTiles();
     } catch (error) {
       this._error = errorMessage(error);
+    } finally {
+      // Stamped whichever way it went, so a failing card retries at most once
+      // per interval instead of once per state change.
+      this._lastAttempt = Date.now();
+      this._loading = false;
     }
   }
 
@@ -216,8 +232,10 @@ class ParetoCard extends LitElement {
 
     return html`
       <ha-card>
-        <div class="head">
-          <span class="title">${this._config.title ?? this._t(this._config.mode)}</span>
+        <div class="head ${this._config.show_title ? "" : "bare"}">
+          ${this._config.show_title
+            ? html`<span class="title">${this._config.title ?? this._t(this._config.mode)}</span>`
+            : nothing}
           <button
             class="icon"
             title=${this._t(this._editing ? "done" : "edit")}
@@ -317,6 +335,13 @@ class ParetoCard extends LitElement {
       padding: 8px 8px 12px;
     }
 
+    /* Without a title the row exists only to carry the pencil, so it stops
+       claiming the height of a heading. */
+    .head.bare {
+      padding: 0 4px 4px;
+      justify-content: flex-end;
+    }
+
     .title {
       font-size: var(--ha-card-header-font-size, 24px);
       font-weight: 400;
@@ -334,6 +359,18 @@ class ParetoCard extends LitElement {
       justify-content: center;
       padding: 4px;
       border-radius: 50%;
+    }
+
+    /* The pencil is a rarely-used affordance sitting next to a heading, so it
+       is deliberately smaller than a normal icon button. */
+    button.icon {
+      --mdc-icon-size: 18px;
+      padding: 2px;
+      opacity: 0.7;
+    }
+
+    button.icon:hover {
+      opacity: 1;
     }
 
     button.icon:hover,

@@ -75,18 +75,32 @@ therefore needs a custom card, always. Pareto brings its own.
 ### The Pareto card
 
 The card ships with the integration and registers itself — there is no second
-HACS entry to install and no Lovelace resource to add by hand. Add it to a
-dashboard:
+HACS entry to install and no Lovelace resource to add by hand. Add it from the
+card picker under **Pareto**, or in YAML:
 
 ```yaml
 type: custom:pareto-card
-mode: top          # top | recent — default: top
-title: Most used   # optional
-columns: 2         # optional; responsive when left out
+mode: top
 ```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `mode` | `top` | Which list to show: `top` or `recent` |
+| `show_title` | `true` | Set to `false` for a card with no heading |
+| `title` | named after `mode` | Your own heading text |
+| `columns` | unset | Fixed column count; without it the grid fits the width |
+
+All of these are editable in the card's visual editor too, so YAML is a choice
+rather than a requirement. The default heading follows Home Assistant's
+language, which is why it may read differently from this table.
 
 Each entry is rendered as Home Assistant's own tile card, so every domain
 behaves exactly as it does elsewhere on your dashboard, dialogs included.
+
+**After an update, reload the browser.** The card is JavaScript, and a browser
+holding the previous copy shows a red error card reading *Custom element
+doesn't exist: pareto-card*. A hard reload fixes it — per device, so another
+person's tablet needs its own even once yours is fine.
 
 Two things it does that the sensors cannot:
 

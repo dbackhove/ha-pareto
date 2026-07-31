@@ -29,10 +29,18 @@ export function parseConfig(config: unknown): ParetoCardConfig {
     columns = raw.columns;
   }
 
+  if (raw.show_title !== undefined && typeof raw.show_title !== "boolean") {
+    throw new Error("pareto-card: show_title must be true or false");
+  }
+
   return {
     type: typeof raw.type === "string" ? raw.type : "custom:pareto-card",
     mode: mode as Mode,
     title: raw.title === undefined ? undefined : String(raw.title),
+    // Named after Home Assistant's own show_name / show_icon / show_state, and
+    // separate from `title` for the same reason: one option says whether, the
+    // other says what.
+    show_title: raw.show_title === undefined ? true : raw.show_title,
     columns,
   };
 }

@@ -15,6 +15,10 @@ const EN = {
   empty: "Nothing recorded yet.",
   allHidden: "Everything is hidden. Use edit mode to bring an entry back.",
   noHelpers: "This Home Assistant frontend provides no card helpers.",
+  mode: "List",
+  title: "Title (empty: named after the list)",
+  show_title: "Show the title",
+  columns: "Columns (empty: fits the width)",
 };
 
 const DE: typeof EN = {
@@ -30,6 +34,10 @@ const DE: typeof EN = {
   empty: "Noch keine Bedienungen erfasst.",
   allHidden: "Alles ausgeblendet. Im Bearbeiten-Modus lässt sich ein Eintrag zurückholen.",
   noHelpers: "Dieses Home-Assistant-Frontend stellt keine Card-Helpers bereit.",
+  mode: "Liste",
+  title: "Titel (leer: benannt nach der Liste)",
+  show_title: "Titel anzeigen",
+  columns: "Spalten (leer: passt sich der Breite an)",
 };
 
 export type StringKey = keyof typeof EN;

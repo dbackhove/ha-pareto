@@ -50,6 +50,20 @@ describe("parseConfig", () => {
     expect(() => parseConfig({ columns: 2.5 })).toThrow(/columns/);
     expect(() => parseConfig({ columns: "two" })).toThrow(/columns/);
   });
+
+  it("shows the title unless asked not to", () => {
+    expect(parseConfig({}).show_title).toBe(true);
+    expect(parseConfig({ show_title: false }).show_title).toBe(false);
+  });
+
+  it("rejects a non-boolean show_title", () => {
+    expect(() => parseConfig({ show_title: "no" })).toThrow(/show_title/);
+  });
+
+  it("keeps an explicitly empty title", () => {
+    // Still honoured for anyone who wrote it before show_title existed.
+    expect(parseConfig({ title: "" }).title).toBe("");
+  });
 });
 
 describe("shouldRefetch", () => {
