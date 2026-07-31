@@ -2,3 +2,12 @@ pytest
 pytest-homeassistant-custom-component
 freezegun
 ruff
+
+# Pareto declares `frontend` as a dependency because it serves the card and
+# calls add_extra_js_url, which writes into data that only the frontend
+# component's own setup creates. Home Assistant therefore sets frontend up
+# before us -- including in tests, where it fails without this package.
+# Deliberately unpinned: only `import hass_frontend` has to succeed, and a pin
+# here would go stale every time pytest-homeassistant-custom-component moves
+# to a new Home Assistant release.
+home-assistant-frontend

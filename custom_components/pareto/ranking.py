@@ -34,11 +34,11 @@ class RankedEntity:
     pinned: bool
 
 
-def _parse_day(day: str) -> date | None:
+def parse_day(day: str) -> date | None:
     """Return the date for an ISO day key, or None if it is malformed."""
     try:
         return date.fromisoformat(day)
-    except ValueError:
+    except (ValueError, TypeError):
         return None
 
 
@@ -53,7 +53,7 @@ def decay_score(counts: dict[str, int], today: date, half_life_days: float) -> f
 
     score = 0.0
     for day, count in counts.items():
-        parsed = _parse_day(day)
+        parsed = parse_day(day)
         if parsed is None:
             continue
         age = max(0, (today - parsed).days)
@@ -149,3 +149,38 @@ def build_ranked_list(
     ranked = [to_ranked(e, True) for e in pinned_ids]
     ranked.extend(to_ranked(u.entity_id, False) for u in candidates)
     return ranked[:limit]
+
+
+def merge_personal_and_global(
+    personal: list[RankedEntity],
+    fallback: list[RankedEntity],
+    limit: int,
+) -> list[tuple[RankedEntity, bool]]:
+    """Pad a personal list out of the global one, up to ``limit``.
+
+    Somebody who installed Pareto an hour ago -- or who mostly operates the
+    house by wall switch, where no user id is attached to anything -- has
+    almost no usage of their own. An empty card would be honest and useless.
+
+    Own entries keep their order and stay in front; the global ranking
+    supplies the rest, skipping anything already listed. The list therefore
+    personalises itself as real usage accumulates, with no switchover to see.
+
+    Globally pinned entities need no special case here: ``build_ranked_list``
+    puts pins in front without requiring any usage, so they are already in
+    ``personal``. This only ever appends unpinned filler.
+
+    The flag is True for entries that came from the reader's own usage.
+    """
+    merged: list[tuple[RankedEntity, bool]] = [(entry, True) for entry in personal[:limit]]
+    seen = {entry.entity_id for entry, _ in merged}
+
+    for entry in fallback:
+        if len(merged) >= limit:
+            break
+        if entry.entity_id in seen:
+            continue
+        seen.add(entry.entity_id)
+        merged.append((entry, False))
+
+    return merged

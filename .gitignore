@@ -8,6 +8,10 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .DS_Store
+node_modules/
+
+# The built card is deliberately NOT ignored: HACS ships the repository as it
+# stands, so custom_components/pareto/www/pareto-card.js has to be in it.
 
 # Working documents from the design phase — kept locally, not published
 docs/superpowers/

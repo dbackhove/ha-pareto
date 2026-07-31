@@ -189,3 +189,145 @@ async def test_a_later_record_does_not_regress_last_used(store):
     store.record("light.a", USER_A, later)
     store.record("light.a", USER_A, earlier)
     assert store.aggregated()[0].last_used == later.isoformat()
+
+
+# --- per-user views -------------------------------------------------------
+
+
+async def test_aggregated_for_user_counts_only_that_user(store):
+    when = datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN)
+    store.record("light.a", USER_A, when)
+    store.record("light.a", USER_B, when)
+    store.record("light.a", USER_B, when)
+
+    assert store.aggregated_for_user(USER_A)[0].counts == {"2026-07-30": 1}
+    assert store.aggregated_for_user(USER_B)[0].counts == {"2026-07-30": 2}
+
+
+async def test_aggregated_for_user_skips_entities_the_user_never_touched(store):
+    store.record("light.a", USER_A, datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN))
+    assert store.aggregated_for_user(USER_B) == []
+
+
+async def test_personal_last_used_is_not_the_households(store):
+    """The whole point of a personal Recent list: it must not report when
+    somebody else last touched the thing."""
+    store.record("light.a", USER_A, datetime(2026, 7, 30, 9, 0, tzinfo=BERLIN))
+    store.record("light.a", USER_B, datetime(2026, 7, 30, 18, 0, tzinfo=BERLIN))
+
+    assert store.aggregated()[0].last_used == "2026-07-30T18:00:00+02:00"
+    assert store.aggregated_for_user(USER_A)[0].last_used == "2026-07-30T09:00:00+02:00"
+
+
+async def test_personal_last_used_never_regresses(store):
+    store.record("light.a", USER_A, datetime(2026, 7, 30, 18, 0, tzinfo=BERLIN))
+    store.record("light.a", USER_A, datetime(2026, 7, 30, 9, 0, tzinfo=BERLIN))
+    assert store.aggregated_for_user(USER_A)[0].last_used == "2026-07-30T18:00:00+02:00"
+
+
+async def test_the_import_records_a_personal_timestamp(store):
+    store.record_import("light.a", USER_A, "2026-07-25", 3, "2026-07-25T12:00:00+02:00")
+    assert store.aggregated_for_user(USER_A)[0].last_used == "2026-07-25T12:00:00+02:00"
+
+
+async def test_legacy_data_falls_back_to_the_newest_own_day(hass):
+    """Data written before per-user stamps existed has none. It falls back to
+    the start of the newest day the user has a bucket for -- never to the
+    entity-wide value, which may belong to somebody else."""
+    s = ParetoStore(hass)
+    with patch(
+        "homeassistant.helpers.storage.Store.async_load",
+        return_value={
+            "data": {
+                "light.a": {
+                    "last_used": "2026-07-30T23:00:00+02:00",
+                    "buckets": {USER_A: {"2026-07-28": 1, "2026-07-29": 2}},
+                }
+            }
+        },
+    ):
+        await s.async_load()
+
+    personal = s.aggregated_for_user(USER_A)[0].last_used
+    assert personal.startswith("2026-07-29T00:00:00")
+    assert personal != "2026-07-30T23:00:00+02:00"
+
+
+async def test_pruning_takes_the_users_timestamp_with_it(store):
+    store.record("light.a", USER_A, datetime(2026, 1, 1, 12, 0, tzinfo=BERLIN))
+    store.record("light.a", USER_B, datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN))
+
+    store.prune(date(2026, 7, 30), keep_days=30)
+
+    stamps = store.raw()["light.a"]["user_last_used"]
+    assert USER_A not in stamps
+    assert USER_B in stamps
+
+
+# --- personal preferences -------------------------------------------------
+
+
+async def test_prefs_start_empty(store):
+    assert store.prefs(USER_A) == {"hidden": [], "pinned": []}
+
+
+async def test_setting_hidden_clears_pinned(store):
+    store.set_pref(USER_A, "light.a", pinned=True)
+    assert store.set_pref(USER_A, "light.a", hidden=True) == {
+        "hidden": ["light.a"],
+        "pinned": [],
+    }
+
+
+async def test_setting_pinned_clears_hidden(store):
+    store.set_pref(USER_A, "light.a", hidden=True)
+    assert store.set_pref(USER_A, "light.a", pinned=True) == {
+        "hidden": [],
+        "pinned": ["light.a"],
+    }
+
+
+async def test_prefs_are_per_user(store):
+    store.set_pref(USER_A, "light.a", hidden=True)
+    assert store.prefs(USER_B) == {"hidden": [], "pinned": []}
+
+
+async def test_clearing_everything_drops_the_user_record(store):
+    store.set_pref(USER_A, "light.a", hidden=True)
+    store.set_pref(USER_A, "light.a", hidden=False)
+    assert store.prefs(USER_A) == {"hidden": [], "pinned": []}
+
+
+async def test_prefs_returns_copies(store):
+    store.set_pref(USER_A, "light.a", hidden=True)
+    store.prefs(USER_A)["hidden"].append("light.b")
+    assert store.prefs(USER_A)["hidden"] == ["light.a"]
+
+
+async def test_prefs_survive_a_reload(hass):
+    s = ParetoStore(hass)
+    await s.async_load()
+    s.set_pref(USER_A, "light.a", hidden=True)
+    await s.async_flush()
+
+    reloaded = ParetoStore(hass)
+    await reloaded.async_load()
+    assert reloaded.prefs(USER_A) == {"hidden": ["light.a"], "pinned": []}
+
+
+async def test_broken_prefs_are_normalised_instead_of_raising(hass):
+    s = ParetoStore(hass)
+    with patch(
+        "homeassistant.helpers.storage.Store.async_load",
+        return_value={
+            "data": {},
+            "prefs": {
+                USER_A: {"hidden": "light.a", "pinned": [1, "light.b"]},
+                USER_B: "not a dict",
+            },
+        },
+    ):
+        await s.async_load()
+
+    assert s.prefs(USER_A) == {"hidden": [], "pinned": ["light.b"]}
+    assert s.prefs(USER_B) == {"hidden": [], "pinned": []}

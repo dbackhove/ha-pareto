@@ -5,27 +5,78 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 import voluptuous as vol
-from homeassistant.components import persistent_notification
+from homeassistant.components import frontend, persistent_notification
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryError, Unauthorized
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
-from .const import ATTR_DAYS, DEFAULT_IMPORT_DAYS, DOMAIN, SERVICE_IMPORT_HISTORY
+from .const import (
+    ATTR_DAYS,
+    CARD_FILENAME,
+    CARD_URL,
+    DEFAULT_IMPORT_DAYS,
+    DOMAIN,
+    SERVICE_IMPORT_HISTORY,
+)
 from .coordinator import ParetoCoordinator
 from .importer import async_import_history
 from .store import ParetoStore, ParetoStoreError
 from .tracker import UsageTracker
+from .websocket import async_register as async_register_websocket
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 IMPORT_SCHEMA = vol.Schema(
     {vol.Optional(ATTR_DAYS, default=DEFAULT_IMPORT_DAYS): vol.All(int, vol.Range(min=1, max=90))}
 )
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Wire up everything that belongs to the component rather than an entry.
+
+    WebSocket command handlers are global and cannot be unregistered, and the
+    card only needs serving once. Doing either per entry would repeat it on
+    every options-triggered reload.
+    """
+    async_register_websocket(hass)
+    await _async_serve_card(hass)
+    return True
+
+
+async def _async_serve_card(hass: HomeAssistant) -> None:
+    """Publish the built card bundle and have the frontend load it.
+
+    HACS allows one category per repository, so the card ships inside the
+    integration and registers itself instead of asking the user to add a
+    Lovelace resource by hand.
+    """
+    card_path = Path(__file__).parent / "www" / CARD_FILENAME
+    if not await hass.async_add_executor_job(card_path.is_file):
+        # A source checkout that was never built. The sensors still work, so
+        # this is a missing extra rather than a reason to fail setup.
+        _LOGGER.warning("Pareto card bundle missing at %s, not serving it", card_path)
+        return
+
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL, str(card_path), cache_headers=True)]
+    )
+
+    # The query string busts the browser cache on upgrade. It comes from the
+    # manifest rather than a second constant, which would eventually drift.
+    integration = await async_get_integration(hass, DOMAIN)
+    frontend.add_extra_js_url(hass, f"{CARD_URL}?v={integration.version}")
 
 
 @dataclass
