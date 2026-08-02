@@ -26,7 +26,9 @@ def build(
     exclude_e=NONE,
     pinned=(),
     exists=lambda _e: True,
+    is_maintenance=None,
 ):
+    extra = {} if is_maintenance is None else {"is_maintenance": is_maintenance}
     return build_ranked_list(
         usages,
         mode=mode,
@@ -38,6 +40,7 @@ def build(
         exclude_entities=exclude_e,
         pinned=pinned,
         exists=exists,
+        **extra,
     )
 
 
@@ -152,6 +155,31 @@ def test_dropping_nonexistent_entities_still_fills_the_limit():
 def test_nonexistent_pin_is_dropped_too():
     result = build([usage("light.a", 1)], pinned=("light.ghost",), exists=lambda e: e == "light.a")
     assert [r.entity_id for r in result] == ["light.a"]
+
+
+def test_maintenance_entities_are_dropped():
+    result = build(
+        [usage("update.firmware", 9), usage("light.a", 1)],
+        is_maintenance=lambda e: e.startswith("update."),
+    )
+    assert [r.entity_id for r in result] == ["light.a"]
+
+
+def test_pin_overrides_the_maintenance_filter():
+    """Pinning a firmware update is a clear enough statement of intent."""
+    result = build(
+        [usage("update.firmware", 1)],
+        pinned=("update.firmware",),
+        is_maintenance=lambda _e: True,
+    )
+    assert [r.entity_id for r in result] == ["update.firmware"]
+    assert result[0].pinned is True
+
+
+def test_without_a_predicate_nothing_counts_as_maintenance():
+    """The default keeps every existing caller and test unaffected."""
+    result = build([usage("update.firmware", 9), usage("light.a", 1)])
+    assert [r.entity_id for r in result] == ["update.firmware", "light.a"]
 
 
 def test_empty_input_yields_empty_list():

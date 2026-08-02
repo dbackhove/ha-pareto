@@ -79,16 +79,23 @@ def _domain_of(entity_id: str) -> str:
     return entity_id.split(".", 1)[0]
 
 
+def _nothing_is_maintenance(_entity_id: str) -> bool:
+    return False
+
+
 def _passes_filters(
     entity_id: str,
     include_domains: frozenset[str],
     exclude_domains: frozenset[str],
     exclude_entities: frozenset[str],
+    is_maintenance: Callable[[str], bool],
 ) -> bool:
     domain = _domain_of(entity_id)
     if include_domains and domain not in include_domains:
         return False
     if domain in exclude_domains:
+        return False
+    if is_maintenance(entity_id):
         return False
     return entity_id not in exclude_entities
 
@@ -105,16 +112,21 @@ def build_ranked_list(
     exclude_entities: frozenset[str],
     pinned: tuple[str, ...],
     exists: Callable[[str], bool],
+    is_maintenance: Callable[[str], bool] = _nothing_is_maintenance,
 ) -> list[RankedEntity]:
     """Render one Pareto list.
 
     ``mode`` is "top" (sorted by decayed score) or "recent" (sorted by
     ``last_used``). Pinned entities are prepended in their configured order and
     count against ``limit``; an explicit pin bypasses all filters
-    (include_domains, exclude_domains, exclude_entities), because pinning
-    something and filtering it out is a contradiction the user resolved by
-    pinning it. Entities that no longer exist are removed before truncation,
-    so a full list stays full.
+    (include_domains, exclude_domains, exclude_entities, is_maintenance),
+    because pinning something and filtering it out is a contradiction the user
+    resolved by pinning it. Entities that no longer exist are removed before
+    truncation, so a full list stays full.
+
+    ``is_maintenance`` reports entities that are plumbing rather than usage --
+    firmware updates and the like. It is injected rather than decided here so
+    this module stays free of the entity registry; see ``relevance.py``.
     """
     by_id = {u.entity_id: u for u in usages}
 
@@ -136,7 +148,9 @@ def build_ranked_list(
         u
         for u in usages
         if u.entity_id not in pinned_set
-        and _passes_filters(u.entity_id, include_domains, exclude_domains, exclude_entities)
+        and _passes_filters(
+            u.entity_id, include_domains, exclude_domains, exclude_entities, is_maintenance
+        )
         and exists(u.entity_id)
     ]
 

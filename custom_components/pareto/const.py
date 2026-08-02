@@ -18,10 +18,30 @@ CONF_INCLUDE_DOMAINS: Final = "include_domains"
 CONF_EXCLUDE_DOMAINS: Final = "exclude_domains"
 CONF_EXCLUDE_ENTITIES: Final = "exclude_entities"
 CONF_PINNED_ENTITIES: Final = "pinned_entities"
+CONF_HIDE_MAINTENANCE: Final = "hide_maintenance"
 
 DEFAULT_TOP_COUNT: Final = 10
 DEFAULT_RECENT_COUNT: Final = 5
 DEFAULT_HALF_LIFE_DAYS: Final = 14
+DEFAULT_HIDE_MAINTENANCE: Final = True
+
+# Domains with no user-facing service to call, so anything recorded against
+# them is an artifact rather than usage. `update` is listed even though Home
+# Assistant usually marks firmware entities entity_category=config, because
+# not every integration sets that field and firmware was the reported case.
+NON_OPERABLE_DOMAINS: Final = frozenset(
+    {
+        "update",
+        "sensor",
+        "binary_sensor",
+        "device_tracker",
+        "person",
+        "weather",
+        "sun",
+        "image",
+        "event",
+    }
+)
 
 MIN_RETENTION_DAYS: Final = 90
 RETENTION_HALF_LIVES: Final = 6

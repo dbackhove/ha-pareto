@@ -18,6 +18,7 @@
           "top_count": "Anzahl der meistgenutzten Entitäten",
           "recent_count": "Anzahl der zuletzt genutzten Entitäten",
           "half_life_days": "Halbwertszeit in Tagen",
+          "hide_maintenance": "Wartungs- und Nur-Lese-Entitäten ausblenden",
           "include_domains": "Nur diese Domains berücksichtigen",
           "exclude_domains": "Diese Domains nie anzeigen",
           "exclude_entities": "Diese Entitäten nie anzeigen",
@@ -25,6 +26,7 @@
         },
         "data_description": {
           "half_life_days": "Wie schnell vergangene Nutzung an Gewicht verliert. Bei 14 Tagen zählt eine Nutzung von vor zwei Wochen halb so viel wie eine von heute.",
+          "hide_maintenance": "Hält Firmware-Updates, Diagnose-Entitäten und alles, was du in Home Assistant ausgeblendet hast, aus beiden Listen heraus — dazu Domains, die sich gar nicht bedienen lassen. Zum Trotzdem-Anzeigen die Entität anheften.",
           "include_domains": "Leer lassen, um alle Domains zuzulassen.",
           "pinned_entities": "Werden zuerst angezeigt, in dieser Reihenfolge, auch ohne jede Nutzung. Angeheftete Entitäten werden auf die obigen Anzahlen angerechnet."
         }

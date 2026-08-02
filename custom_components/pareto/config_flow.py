@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
@@ -22,11 +23,13 @@ from .const import (
     CONF_EXCLUDE_DOMAINS,
     CONF_EXCLUDE_ENTITIES,
     CONF_HALF_LIFE_DAYS,
+    CONF_HIDE_MAINTENANCE,
     CONF_INCLUDE_DOMAINS,
     CONF_PINNED_ENTITIES,
     CONF_RECENT_COUNT,
     CONF_TOP_COUNT,
     DEFAULT_HALF_LIFE_DAYS,
+    DEFAULT_HIDE_MAINTENANCE,
     DEFAULT_RECENT_COUNT,
     DEFAULT_TOP_COUNT,
     DOMAIN,
@@ -87,6 +90,10 @@ class ParetoOptionsFlow(OptionsFlow):
                     CONF_HALF_LIFE_DAYS,
                     default=options.get(CONF_HALF_LIFE_DAYS, DEFAULT_HALF_LIFE_DAYS),
                 ): _count_selector(1, 90),
+                vol.Optional(
+                    CONF_HIDE_MAINTENANCE,
+                    default=options.get(CONF_HIDE_MAINTENANCE, DEFAULT_HIDE_MAINTENANCE),
+                ): BooleanSelector(),
                 vol.Optional(
                     CONF_INCLUDE_DOMAINS, default=options.get(CONF_INCLUDE_DOMAINS, [])
                 ): domain_selector,

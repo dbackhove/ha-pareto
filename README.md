@@ -43,6 +43,14 @@ live tracker would have ignored them, so day-1 rankings can look slightly
 different from the ranking a week in, once the backfilled days have aged out
 and only live-tracked days remain.
 
+What the backfill does exclude is entities that merely changed as a consequence.
+A logbook row names the entity that changed, not the one that was called, so
+switching a socket also produces a row for every template sensor watching it.
+Pareto counts a row only when the entity's domain matches the service's, plus
+`homeassistant.*` calls, which target across domains by design. A scene is
+therefore counted as the scene, not as the twelve lights it sets — the same way
+the live tracker sees it.
+
 ## Entities
 
 | Entity | State | Attribute `entities` |
@@ -60,10 +68,31 @@ sensor — `score`.
 | Top count | 10 | Length of the most-used list |
 | Recent count | 5 | Length of the recently-used list |
 | Half-life | 14 days | How fast past usage loses weight |
+| Hide maintenance entities | on | Keeps plumbing out of both lists; see below |
 | Only these domains | empty | Whitelist; empty allows all |
 | Never these domains | empty | Domain blocklist |
 | Never these entities | empty | Entity blocklist |
 | Always these entities | empty | Pins, shown first, counting towards the numbers above |
+
+### Hiding maintenance entities
+
+Clicking "install" on a firmware update is a real service call by a real human,
+so Pareto records it — and it is still not something anyone wants a tile for.
+While this option is on, an entity stays out of both lists when Home Assistant
+marks it as a configuration or diagnostic entity, when you have hidden it in
+Home Assistant, or when its domain cannot be operated at all:
+
+```
+update, sensor, binary_sensor, device_tracker, person, weather, sun, image, event
+```
+
+Leaning on Home Assistant's own classification means integrations that do not
+exist yet are covered too, with no list to keep current. `update` is named
+explicitly all the same, because not every integration marks its firmware
+entities and firmware is the case this exists for.
+
+A pin still wins. To keep one entity that this would otherwise hide, add it to
+**Always these entities**.
 
 ## Showing the list
 

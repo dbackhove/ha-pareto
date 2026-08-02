@@ -100,6 +100,44 @@ async def test_malformed_rows_are_skipped(hass, store):
     assert written == 1
 
 
+async def test_skips_an_entity_that_only_changed_as_a_side_effect(hass, store):
+    """The logbook row names the entity that changed, not the one called.
+
+    Switching switch.gong also flips the template binary_sensor that follows
+    it, and the logbook reports both against the same switch.turn_on. The live
+    tracker records only the resolved target, so the importer must too.
+    """
+    rows = [
+        entry("switch.gong", "2026-07-28T12:00:00+02:00", domain="switch"),
+        entry("binary_sensor.gong_ist_stumm", "2026-07-28T12:00:00+02:00", domain="switch"),
+    ]
+    with patch(PATCH_TARGET, AsyncMock(side_effect=[rows] + [[]] * 9)):
+        written = await async_import_history(hass, store, days=10)
+    assert written == 1
+    assert [u.entity_id for u in store.aggregated()] == ["switch.gong"]
+
+
+async def test_keeps_universal_homeassistant_calls_across_domains(hass, store):
+    """homeassistant.turn_on targets any domain, so the domains never match."""
+    rows = [entry("light.a", "2026-07-28T12:00:00+02:00", domain="homeassistant")]
+    with patch(PATCH_TARGET, AsyncMock(side_effect=[rows] + [[]] * 9)):
+        written = await async_import_history(hass, store, days=10)
+    assert written == 1
+    assert [u.entity_id for u in store.aggregated()] == ["light.a"]
+
+
+async def test_a_scene_counts_itself_and_not_the_lights_it_sets(hass, store):
+    rows = [
+        entry("scene.abend", "2026-07-28T12:00:00+02:00", domain="scene", service="turn_on"),
+        entry("light.a", "2026-07-28T12:00:00+02:00", domain="scene", service="turn_on"),
+        entry("light.b", "2026-07-28T12:00:00+02:00", domain="scene", service="turn_on"),
+    ]
+    with patch(PATCH_TARGET, AsyncMock(side_effect=[rows] + [[]] * 9)):
+        written = await async_import_history(hass, store, days=10)
+    assert written == 1
+    assert [u.entity_id for u in store.aggregated()] == ["scene.abend"]
+
+
 async def test_two_calls_on_the_same_day_aggregate_to_two(hass, store):
     """record_import refuses a bucket that already exists, so importing one
     row at a time would silently clamp every day to at most 1. The importer

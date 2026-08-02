@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
+from homeassistant.const import EntityCategory
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.pareto.const import (
     CONF_EXCLUDE_ENTITIES,
     CONF_HALF_LIFE_DAYS,
+    CONF_HIDE_MAINTENANCE,
     CONF_PINNED_ENTITIES,
     CONF_TOP_COUNT,
     DOMAIN,
@@ -187,3 +190,37 @@ async def test_start_schedules_the_daily_pass_just_after_midnight(hass):
     assert track.called
     assert track.call_args.kwargs == {"hour": 0, "minute": 1, "second": 0}
     await coordinator.async_stop()
+
+
+async def _record_a_config_entity_and_a_light(hass, store):
+    """Set up one entity Home Assistant marks as configuration, and one normal."""
+    er.async_get(hass).async_get_or_create(
+        "switch",
+        "test_platform",
+        "led_indicator",
+        suggested_object_id="led_indicator",
+        entity_category=EntityCategory.CONFIG,
+    )
+    for entity_id in ("switch.led_indicator", "light.a"):
+        hass.states.async_set(entity_id, "off")
+        store.record(entity_id, USER, datetime(2026, 7, 30, 12, 0, tzinfo=BERLIN))
+
+
+async def test_maintenance_entities_are_filtered_out_by_default(hass):
+    """The option defaults to on, so an installation that never opens the
+    options flow still gets clean lists."""
+    coordinator, store = await make(hass)
+    await _record_a_config_entity_and_a_light(hass, store)
+
+    coordinator.async_recompute()
+
+    assert [e.entity_id for e in coordinator.top] == ["light.a"]
+
+
+async def test_turning_the_option_off_brings_maintenance_entities_back(hass):
+    coordinator, store = await make(hass, {CONF_HIDE_MAINTENANCE: False})
+    await _record_a_config_entity_and_a_light(hass, store)
+
+    coordinator.async_recompute()
+
+    assert {e.entity_id for e in coordinator.top} == {"switch.led_indicator", "light.a"}

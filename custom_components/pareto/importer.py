@@ -44,6 +44,23 @@ async def async_fetch_logbook_day(
     return await get_instance(hass).async_add_executor_job(processor.get_events, day_start, day_end)
 
 
+def _was_the_target(entity_id: str, context_domain: str) -> bool:
+    """Return whether the call plausibly targeted this entity, not a follow-on.
+
+    A logbook row names the entity that *changed*; the context names the call
+    that caused it. Switching ``switch.gong`` therefore yields a row for the
+    switch and another for the template ``binary_sensor`` that tracks it, both
+    against the same ``switch.turn_on``. The live tracker counts only the
+    resolved target, so the backfill has to approximate the same thing.
+
+    The row carries no target list, so the closest available rule is that the
+    entity's own domain matches the service's. ``homeassistant`` is the
+    exception that has to be allowed through: ``homeassistant.turn_on`` targets
+    every domain, and rejecting it would drop real usage.
+    """
+    return context_domain == "homeassistant" or entity_id.split(".", 1)[0] == context_domain
+
+
 def _extract(row: dict[str, Any]) -> tuple[str, str, str, str] | None:
     """Return (entity_id, user_id, day, when_iso) if this row is a user action."""
     if row.get("context_event_type") != "call_service":
@@ -58,6 +75,8 @@ def _extract(row: dict[str, Any]) -> tuple[str, str, str, str] | None:
     domain = row.get("context_domain")
     service = row.get("context_service")
     if isinstance(domain, str) and isinstance(service, str) and is_blocked_service(domain, service):
+        return None
+    if isinstance(domain, str) and not _was_the_target(entity_id, domain):
         return None
 
     try:

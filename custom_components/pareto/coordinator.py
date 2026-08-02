@@ -16,16 +16,19 @@ from .const import (
     CONF_EXCLUDE_DOMAINS,
     CONF_EXCLUDE_ENTITIES,
     CONF_HALF_LIFE_DAYS,
+    CONF_HIDE_MAINTENANCE,
     CONF_INCLUDE_DOMAINS,
     CONF_PINNED_ENTITIES,
     CONF_RECENT_COUNT,
     CONF_TOP_COUNT,
     DEFAULT_HALF_LIFE_DAYS,
+    DEFAULT_HIDE_MAINTENANCE,
     DEFAULT_RECENT_COUNT,
     DEFAULT_TOP_COUNT,
     UPDATE_DEBOUNCE,
 )
 from .ranking import RankedEntity, build_ranked_list, retention_days
+from .relevance import build_maintenance_filter
 from .store import ParetoStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -129,6 +132,10 @@ class ParetoCoordinator:
             "exclude_entities": frozenset(options.get(CONF_EXCLUDE_ENTITIES, [])),
             "pinned": tuple(options.get(CONF_PINNED_ENTITIES, [])),
             "exists": lambda entity_id: self._hass.states.get(entity_id) is not None,
+            "is_maintenance": build_maintenance_filter(
+                self._hass,
+                bool(options.get(CONF_HIDE_MAINTENANCE, DEFAULT_HIDE_MAINTENANCE)),
+            ),
         }
 
     @callback
