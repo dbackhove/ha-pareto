@@ -104,8 +104,16 @@ therefore needs a custom card, always. Pareto brings its own.
 ### The Pareto card
 
 The card ships with the integration and registers itself — there is no second
-HACS entry to install and no Lovelace resource to add by hand. Add it from the
-card picker under **Pareto**, or in YAML:
+HACS entry to install and no Lovelace resource to add by hand. It registers
+itself twice over: as an extra module URL and as a Lovelace resource. Both are
+needed. The module URL is written into the rendered index page, which the iOS
+companion app keeps in its cache and does not re-fetch — on that client only
+the Lovelace resource arrives, and without it every Pareto card shows
+"Custom element doesn't exist: pareto-card". If you added the resource by hand
+at some point, leave it: the integration adopts that entry and keeps its
+version tag current rather than adding a second one.
+
+Add it from the card picker under **Pareto**, or in YAML:
 
 ```yaml
 type: custom:pareto-card

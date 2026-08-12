@@ -10,6 +10,7 @@ from pathlib import Path
 import voluptuous as vol
 from homeassistant.components import frontend, persistent_notification
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -74,9 +75,66 @@ async def _async_serve_card(hass: HomeAssistant) -> None:
     )
 
     # The query string busts the browser cache on upgrade. It comes from the
-    # manifest rather than a second constant, which would eventually drift.
+    # manifest rather than a second constant, which would eventually drift --
+    # which also means the manifest version must be raised for every release,
+    # or the bust never busts.
     integration = await async_get_integration(hass, DOMAIN)
-    frontend.add_extra_js_url(hass, f"{CARD_URL}?v={integration.version}")
+    url = f"{CARD_URL}?v={integration.version}"
+    frontend.add_extra_js_url(hass, url)
+    await _async_register_card_resource(hass, url)
+
+
+async def _async_register_card_resource(hass: HomeAssistant, url: str) -> None:
+    """Register the card as a Lovelace resource as well as an extra module.
+
+    Both are needed, and for different clients. `add_extra_js_url` only puts
+    a script tag into the rendered index page (frontend's IndexView reads
+    DATA_EXTRA_MODULE_URL at render time), so a client holding a cached index
+    -- the iOS companion app above all -- never learns the card exists and
+    renders every Pareto card as "Custom element doesn't exist: pareto-card".
+    Lovelace resources travel over the websocket on each dashboard load and
+    the panel waits for them before building any card, so that is the path
+    that actually arrives. The extra module url stays for YAML-mode
+    instances, where the resource collection cannot be written to at all.
+
+    Loading the card twice is harmless: both custom elements in the bundle
+    register under a `customElements.get` guard.
+    """
+    lovelace = hass.data.get(LOVELACE_DATA)
+    if lovelace is None:
+        # Only reachable if `lovelace` failed its own setup, since it is a
+        # manifest dependency. The card is still served; nothing to do here.
+        return
+
+    if lovelace.resource_mode != MODE_STORAGE:
+        # YAML mode owns its resource list in configuration.yaml, and the
+        # collection rejects writes. Those users add the resource by hand or
+        # rely on the extra module url.
+        _LOGGER.debug("Lovelace runs in YAML resource mode, not registering a resource")
+        return
+
+    resources = lovelace.resources
+    # `loaded` and the explicit load mirror what the lovelace component does
+    # for its own reads (see ResourceStorageCollection.async_get_info); there
+    # is no public accessor that loads on demand.
+    if not resources.loaded:
+        await resources.async_load()
+        resources.loaded = True
+
+    try:
+        for item in resources.async_items():
+            if str(item.get("url", "")).startswith(CARD_URL):
+                if item["url"] != url:
+                    # Adopts a hand-added entry and corrects a stale version
+                    # instead of adding a second one beside it.
+                    await resources.async_update_item(item["id"], {"url": url})
+                return
+
+        await resources.async_create_item({"res_type": "module", "url": url})
+    except Exception:
+        # A dashboard resource is a convenience; the sensors are the product.
+        # Never let this take component setup down with it.
+        _LOGGER.exception("Could not register the Pareto card as a Lovelace resource")
 
 
 @dataclass
