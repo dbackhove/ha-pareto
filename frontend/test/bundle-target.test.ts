@@ -1,21 +1,30 @@
 // The committed bundle must stay inside the oldest browser we support.
 //
-// This exists because of a real failure. On an Amazon Fire HD 10 (11th gen,
-// Fire OS 7 / Android API 30) the dashboard showed "Custom element doesn't
-// exist: pareto-card" while the page around it rendered fine. The module had
-// been fetched; it threw a SyntaxError while being evaluated, so
-// customElements.define() never ran and Home Assistant fell back to its
-// generic missing-card placeholder. The cause was build.mjs targeting es2021,
-// which left 14 `??=`, one `||=` and one `&&=` in the output -- syntax that
-// needs Chromium 85. The sibling integration ha-tinybreeze shipped the same
-// defect from the same build config and carries the same guard.
+// A word on where this came from, because the file used to claim otherwise.
+// An Amazon Fire HD 10 (11th gen, KFRASWI) showed "Custom element doesn't
+// exist: pareto-card", and that was diagnosed as a SyntaxError from the 14
+// `??=`, one `||=` and one `&&=` that an es2021 build leaves behind --
+// syntax needing Chromium 85. Measured on the device afterwards, its WebView
+// reported Chromium 148 and passed every feature probe. It had never choked
+// on the syntax. The module simply never arrived: this integration published
+// the card through `add_extra_js_url` alone, which no client with a cached
+// index page ever re-reads.
+//
+// So the floor below is not load-bearing against any failure we have
+// actually seen. It is kept as a deliberate conservative policy -- the card
+// lands on wall panels and old tablets, and the bundle is committed, so a
+// raised target ships straight to every installation with nobody downstream
+// re-running esbuild. The `.replaceAll`-class entries below are the part
+// that earns its keep regardless of the floor: esbuild cannot lower a
+// runtime API at any target. The sibling integration ha-tinybreeze carries
+// the same guard, from the same build config.
 //
 // Why a test and not just a lower target: the bundle is built once and
 // committed, so nothing downstream ever re-runs esbuild. A raised target
 // ships straight to every installation. CI's `npm run build` +
 // `git diff --exit-code` catches a *forgotten* rebuild, but passes happily on
-// a *raised target* that was rebuilt and committed -- which is exactly how the
-// Fire HD bug would come back.
+// a *raised target* that was rebuilt and committed, which is the whole
+// failure mode this guards.
 //
 // Why a string scan and not a parse: the CI runner's Node parses ES2021
 // happily, so a parser-based check would never fail on its own. The tolerated
@@ -42,11 +51,11 @@ const BUNDLE_PATH = path.resolve(here, "../../custom_components/pareto/www/paret
 const BUILD_SCRIPT_PATH = path.resolve(here, "../build.mjs");
 const TSCONFIG_PATH = path.resolve(here, "../tsconfig.json");
 
-// The floor. Chromium 80 is the binding constraint -- it is what the Fire HD
-// class of device runs, and it keeps `??` and `?.` native (both landed in 80)
-// while esbuild transpiles the newer operators away. Safari 14 and Firefox 78
-// are the contemporaries of that Chromium. Raising any of these is a decision
-// about which devices stop working, so it should be made deliberately, here.
+// The floor. Chromium 80 keeps `??` and `?.` native (both landed in 80) while
+// esbuild transpiles the newer operators away, which is what makes it cheap.
+// Safari 14 and Firefox 78 are the contemporaries of that Chromium. Raising
+// any of these is a decision about which devices stop working, so it should
+// be made deliberately, here.
 const FLOOR = ["chrome80", "safari14", "firefox78"];
 const FLOOR_CHROME = 80;
 
@@ -207,7 +216,7 @@ describe("the floor is declared where the build reads it", () => {
     expect(
       declared,
       `build.mjs must target ${FLOOR.join(", ")}. A single "esXXXX" target is not enough: ` +
-        `es2021 is what shipped the Fire HD bug.`,
+        `it says nothing about which browser versions implement it.`,
     ).toEqual([...FLOOR].sort());
   });
 
